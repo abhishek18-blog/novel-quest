@@ -1,0 +1,52 @@
+[debug] [2026-03-04T16:13:48.789Z] ----------------------------------------------------------------------
+[debug] [2026-03-04T16:13:48.793Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Gayatri\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init hosting
+[debug] [2026-03-04T16:13:48.794Z] CLI Version:   15.8.0
+[debug] [2026-03-04T16:13:48.794Z] Platform:      win32
+[debug] [2026-03-04T16:13:48.794Z] Node Version:  v22.13.1
+[debug] [2026-03-04T16:13:48.795Z] Time:          Wed Mar 04 2026 21:43:48 GMT+0530 (India Standard Time)
+[debug] [2026-03-04T16:13:48.795Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\Gayatri\Downloads\NovelAI-Gem-main\NovelAI-Gem-main
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-03-04T16:13:54.583Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-03-04T16:13:54.583Z] > authorizing via signed-in user (gayatributkar14@gmail.com)
+[debug] [2026-03-04T16:13:54.584Z] Checked if tokens are valid: true, expires at: 1772644419219
+[debug] [2026-03-04T16:13:54.585Z] Checked if tokens are valid: true, expires at: 1772644419219
+[debug] [2026-03-04T16:13:54.586Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-03-04T16:13:55.618Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-03-04T16:13:55.618Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] 
+=== Hosting Setup
+[debug] [2026-03-04T16:13:57.471Z] Checked if tokens are valid: true, expires at: 1772644419219
+[debug] [2026-03-04T16:13:57.471Z] Checked if tokens are valid: true, expires at: 1772644419219
+[debug] [2026-03-04T16:13:57.472Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/novel-quest-f5ffd [none]
+[debug] [2026-03-04T16:13:58.261Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/novel-quest-f5ffd 200
+[debug] [2026-03-04T16:13:58.261Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/novel-quest-f5ffd {"projectId":"novel-quest-f5ffd","projectNumber":"413319700450","displayName":"novel-quest","name":"projects/novel-quest-f5ffd","resources":{"hostingSite":"novel-quest-f5ffd"},"state":"ACTIVE","etag":"1_16adc0b2-00ae-4b4e-97c5-53a250801976"}
+[info] 
+[info] Your public directory is the folder (relative to your project directory) that
+[info] will contain Hosting assets to be uploaded with firebase deploy. If you
+[info] have a build process for your assets, use your build's output directory.
+[info] 
+[info] 
+[info] i  Didn't detect a .git folder. Assuming C:\Users\Gayatri\Downloads\NovelAI-Gem-main\NovelAI-Gem-main is the project root. 
+[info] i  Authorizing with GitHub to upload your service account to a GitHub repository's secrets store. 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://github.com/login/oauth/authorize?client_id=89cf50f02ac6aaed3484&state=569425014&redirect_uri=http%3A%2F%2Flocalhost%3A9005&scope=read%3Auser%20repo%20public_repo
+[info] 
+[info] Waiting for authentication...
