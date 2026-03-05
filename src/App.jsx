@@ -204,13 +204,12 @@ export default function App() {
   const callAi = async (prompt, systemPrompt = "You are a literary assistant.") => {
     setIsAiLoading(true);
     try {
-      // UPDATED: Relative path for Vercel Monorepo deployment
       const response = await fetch("/api/chat", { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          prompt: prompt, 
-          systemPrompt: systemPrompt,
+          prompt,
+          systemPrompt,
           context: pages[currentPage] 
         })
       });
@@ -294,9 +293,8 @@ export default function App() {
     if (!selection) return notify("Select text to translate", "info");
     const targetLangName = LANGUAGES.find(l => l.code === selectedLang)?.name || selectedLang;
     const res = await callAi(
-      `Translate to ${targetLangName}. Return ONLY the result:\n\n${selection.substring(0, 500)}`,
-      `You are a professional literary translator. Reply with ONLY the translation.`,
-      true
+      `Translate to ${targetLangName}. Return ONLY the translation, nothing else:\n\n${selection.substring(0, 500)}`,
+      `You are a professional literary translator. Reply with ONLY the translation, no explanations or preamble.`
     );
     setChatHistory(prev => [...prev, { role: 'bot', content: `**${targetLangName} Translation:**\n\n${res}` }]);
     setActiveTab('chat'); setIsSidebarOpen(true);

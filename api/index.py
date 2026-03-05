@@ -18,6 +18,14 @@ def chat_with_ai():
         data = request.get_json()
         prompt = data.get('prompt', 'Hello')
         context = data.get('context', '')
+        system_prompt = data.get('systemPrompt', 'You are a literary assistant.')
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        user_content = f"Context:\n{context}\n\nQuestion:\n{prompt}" if context else prompt
+        messages.append({"role": "user", "content": user_content})
 
         response = requests.post(
             url="https://api.groq.com/openai/v1/chat/completions",
@@ -27,12 +35,7 @@ def chat_with_ai():
             },
             json={
                 "model": "llama3-70b-8192",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Context:\n{context}\n\nQuestion:\n{prompt}"
-                    }
-                ],
+                "messages": messages,
                 "temperature": 0.7
             },
             timeout=15
