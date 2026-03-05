@@ -12,15 +12,15 @@
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "autoprefixer": "^10.4.23",
-    "firebase": "^12.7.0",
+    "firebase": "^12.10.0",
     "init": "^0.1.2",
     "lucide-react": "^0.562.0",
+    "node-fetch": "^3.3.2",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.18",
-    "vite": "^7.2.4"
-
+    "vite": "^7.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
