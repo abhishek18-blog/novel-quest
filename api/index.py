@@ -7,6 +7,13 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 class handler(BaseHTTPRequestHandler):
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
     def do_POST(self):
         if not GROQ_API_KEY:
             self._respond(500, {"error": "GROQ_API_KEY missing"})
@@ -14,8 +21,8 @@ class handler(BaseHTTPRequestHandler):
 
         try:
             content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body)
+            raw_body = self.rfile.read(content_length)
+            data = json.loads(raw_body.decode('utf-8'))
 
             prompt = data.get('prompt', 'Hello')
             context = data.get('context', '')
@@ -56,19 +63,13 @@ class handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._respond(500, {"error": str(e)})
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._send_cors_headers()
-        self.end_headers()
-
-    def _send_cors_headers(self):
+    def _respond(self, status, data):
+        body = json.dumps(data).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-
-    def _respond(self, status, data):
-        self.send_response(status)
-        self._send_cors_headers()
-        self.send_header('Content-Type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        self.wfile.write(body)
