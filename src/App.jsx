@@ -316,55 +316,21 @@ export default function App() {
         );
       }
 
-      // STREAM READER: Fixed - uses buffer to handle partial SSE chunks
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = "";
-      let buffer = "";
+      // Simple JSON response (non-streaming for Vercel compatibility)
+      const resData = await response.json();
+      if (resData.error) throw new Error(resData.error);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const answer = resData.answer || "";
+      const thought = resData.thought || "";
+      finalAnswer = answer;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // keep incomplete last line in buffer
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data: ")) continue;
-          const raw = trimmed.slice(6);
-          if (raw === "[DONE]") break;
-          try {
-            const data = JSON.parse(raw);
-            const token = data.token;
-            if (!token) continue;
-
-            fullContent += token;
-
-            // Chain of Thought separation for DeepSeek
-            let thought = "";
-            let answer = fullContent;
-            if (fullContent.includes("<think>")) {
-              const parts = fullContent.split("</think>");
-              thought = parts[0].replace("<think>", "").trim();
-              answer = parts[1] ? parts[1].trim() : "⏳ Thinking...";
-            }
-
-            finalAnswer = answer === "⏳ Thinking..." ? "" : answer;
-
-            setChatHistory((prev) =>
-              prev.map((msg) =>
-                msg.id === botMsgId
-                  ? { ...msg, content: answer, thought: thought }
-                  : msg,
-              ),
-            );
-          } catch (e) {
-            // Partial JSON packet; skip
-          }
-        }
-      }
+      setChatHistory((prev) =>
+        prev.map((msg) =>
+          msg.id === botMsgId
+            ? { ...msg, content: answer, thought: thought }
+            : msg,
+        ),
+      );
       return finalAnswer;
     } catch (err) {
       console.error("AI Proxy Error:", err);
