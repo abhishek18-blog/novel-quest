@@ -3,14 +3,16 @@ import requests
 import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env BEFORE reading env vars
 
 app = Flask(__name__)
 CORS(app)
 
-GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
-
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
+    GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
     if not GROQ_KEY:
         return jsonify({"error": "GROQ_API_KEY missing"}), 500
 
@@ -22,7 +24,7 @@ def chat_with_ai():
         mode = data.get('mode', 'strict')
 
         payload = {
-            "model": "deepseek-r1-distill-llama-70b",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "system",
@@ -34,7 +36,7 @@ def chat_with_ai():
                 }
             ],
             "temperature": 0.6,
-            "stream": False  # Non-streaming for Vercel compatibility
+            "stream": False
         }
 
         response = requests.post(
@@ -48,6 +50,8 @@ def chat_with_ai():
         )
 
         result = response.json()
+        print("Groq response:", result)  # Debug log
+
         full_text = result['choices'][0]['message']['content']
 
         # Strip <think> tags, send thought and answer separately
@@ -61,4 +65,8 @@ def chat_with_ai():
         return jsonify({"answer": answer, "thought": thought})
 
     except Exception as e:
+        print("ERROR:", e)  # Debug log
         return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(port=5000, debug=True)
