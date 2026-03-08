@@ -316,11 +316,11 @@ export default function App() {
         );
       }
 
-      // STREAM READER: Handles partial SSE chunks across multiple reads
+      // STREAM READER: Fixed - uses buffer to handle partial SSE chunks
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
-      let buffer = ""; // carries incomplete lines across chunks
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -328,13 +328,12 @@ export default function App() {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
-        // Keep last (possibly incomplete) line in buffer
-        buffer = lines.pop() || "";
+        buffer = lines.pop() || ""; // keep incomplete last line in buffer
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed.startsWith("data: ")) continue;
-          const raw = trimmed.slice(6); // remove "data: "
+          const raw = trimmed.slice(6);
           if (raw === "[DONE]") break;
           try {
             const data = JSON.parse(raw);
@@ -349,7 +348,6 @@ export default function App() {
             if (fullContent.includes("<think>")) {
               const parts = fullContent.split("</think>");
               thought = parts[0].replace("<think>", "").trim();
-              // Show "Thinking..." while </think> hasn't arrived yet
               answer = parts[1] ? parts[1].trim() : "⏳ Thinking...";
             }
 
