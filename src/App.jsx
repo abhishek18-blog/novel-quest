@@ -316,24 +316,30 @@ export default function App() {
         );
       }
 
-      // STREAM READER: Replaces .json() to prevent "Unexpected end of input"
+      // STREAM READER: Handles partial SSE chunks across multiple reads
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = ""; // carries incomplete lines across chunks
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n"); // Split by Server-Sent Event boundary
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep last (possibly incomplete) line in buffer
+        buffer = lines.pop() || "";
 
-        lines.forEach((line) => {
-          if (!line.startsWith("data: ")) return;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          const raw = trimmed.slice(6); // remove "data: "
+          if (raw === "[DONE]") break;
           try {
-            const data = JSON.parse(line.replace("data: ", ""));
+            const data = JSON.parse(raw);
             const token = data.token;
-            if (!token) return;
+            if (!token) continue;
 
             fullContent += token;
 
@@ -343,10 +349,11 @@ export default function App() {
             if (fullContent.includes("<think>")) {
               const parts = fullContent.split("</think>");
               thought = parts[0].replace("<think>", "").trim();
-              answer = parts[1] ? parts[1].trim() : "";
+              // Show "Thinking..." while </think> hasn't arrived yet
+              answer = parts[1] ? parts[1].trim() : "⏳ Thinking...";
             }
 
-            finalAnswer = answer;
+            finalAnswer = answer === "⏳ Thinking..." ? "" : answer;
 
             setChatHistory((prev) =>
               prev.map((msg) =>
@@ -356,9 +363,9 @@ export default function App() {
               ),
             );
           } catch (e) {
-            // Partial JSON packet; skip until next chunk
+            // Partial JSON packet; skip
           }
-        });
+        }
       }
       return finalAnswer;
     } catch (err) {
