@@ -1,75 +1,65 @@
 import os
-import json
 import requests
-from http.server import BaseHTTPRequestHandler
+import json
+from flask import Flask, request, Response, stream_with_context, jsonify
+from flask_cors import CORS
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+app = Flask(__name__)
+CORS(app) 
 
-class handler(BaseHTTPRequestHandler):
+GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+@app.route('/api/chat', methods=['POST'])
+def chat_with_ai():
+    if not GROQ_KEY:
+        def key_err(): yield f"data: {json.dumps({'error': 'GROQ_API_KEY missing'})}\n\n"
+        return Response(stream_with_context(key_err()), mimetype='text/event-stream')
 
-    def do_POST(self):
-        if not GROQ_API_KEY:
-            self._respond(500, {"error": "GROQ_API_KEY missing"})
-            return
+    try:
+        data = request.get_json()
+        sys_msg = data.get('systemPrompt', "You are a helpful assistant.")
+        user_q = data.get('prompt', 'Hello')
+        context = data.get('context', '')
+        mode = data.get('mode', 'strict')
 
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            raw_body = self.rfile.read(content_length)
-            data = json.loads(raw_body.decode('utf-8'))
-
-            prompt = data.get('prompt', 'Hello')
-            context = data.get('context', '')
-            system_prompt = data.get('systemPrompt', 'You are a literary assistant.')
-
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-
-            user_content = f"Context:\n{context}\n\nQuestion:\n{prompt}" if context else prompt
-            messages.append({"role": "user", "content": user_content})
+        def generate():
+            # FIXED: Added missing comma in the payload and enabled stream: True
+            payload = {
+                "model": "deepseek-r1-distill-llama-70b", # Fixed comma here
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": f"{sys_msg} RULE: Answer strictly based on manuscript. Use <think> tags."
+                    },
+                    {
+                        "role": "user", 
+                        "content": f"MANUSCRIPT:\n{context[:5000]}\n\nQUESTION: {user_q}"
+                    }
+                ],
+                "temperature": 0.6,
+                "stream": True # CRITICAL for Vercel stability
+            }
 
             response = requests.post(
                 url="https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "llama3-70b-8192",
-                    "messages": messages,
-                    "temperature": 0.7
-                },
-                timeout=15
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json=payload,
+                stream=True,
+                timeout=90 
             )
 
-            if response.status_code != 200:
-                self._respond(response.status_code, {
-                    "error": "Groq API Error",
-                    "details": response.text
-                })
-                return
+            for line in response.iter_lines():
+                if line:
+                    decoded = line.decode('utf-8').replace('data: ', '')
+                    if decoded == '[DONE]': break
+                    try:
+                        chunk = json.loads(decoded)
+                        token = chunk['choices'][0]['delta'].get('content', '')
+                        if token:
+                            yield f"data: {json.dumps({'token': token})}\n\n"
+                    except: continue
 
-            self._respond(200, response.json())
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
-        except requests.exceptions.Timeout:
-            self._respond(504, {"error": "AI response timed out"})
-        except Exception as e:
-            self._respond(500, {"error": str(e)})
-
-    def _respond(self, status, data):
-        body = json.dumps(data).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(body)))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-        self.wfile.write(body)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
