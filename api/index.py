@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-import base64g
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
