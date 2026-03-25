@@ -27,62 +27,30 @@ import {
   BrainCircuit,
   Quote,
   Wand2,
-  Eye,
-  EyeOff,
-  Mail,
-  KeyRound,
-  ImagePlus,
-  ScanText,
 } from "lucide-react";
 
-// Firebase Imports
-import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-  getAuth,
   signInAnonymously,
   signInWithCustomToken,
   signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
   signOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
 } from "firebase/auth";
 import {
-  getFirestore,
   doc,
-  setDoc,
-  getDoc,
   collection,
   onSnapshot,
   addDoc,
   deleteDoc,
-  query,
 } from "firebase/firestore";
 
-/**
- * --- ENVIRONMENT CONFIGURATION ---
- */
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const appId = String(import.meta.env.VITE_APP_ID || "novel-quest-v1").replace(
-  /[^a-zA-Z0-9]/g,
-  "_",
-);
-
-// Initialize Firebase services
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
+import { auth, db, appId } from "./lib/firebase";
+import LandingPage from "./components/LandingPage";
+import MobileHeader from "./components/MobileHeader";
+import Notification from "./components/Notification";
+import NavItem from "./components/NavItem";
+import ReactMarkdown from "react-markdown";
 
 const WORDS_PER_PAGE = 275;
 
@@ -126,6 +94,7 @@ export default function App() {
   });
 
   // UI States
+  const [hasStarted, setHasStarted] = useState(() => localStorage.getItem("nq_started") === "true");
   const [activeTab, setActiveTab] = useState("library");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [userInput, setUserInput] = useState("");
@@ -137,23 +106,8 @@ export default function App() {
   const [isPdfReady, setIsPdfReady] = useState(false);
   const [selectedLang, setSelectedLang] = useState("hi");
   const [chatMode, setChatMode] = useState("strict");
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState("");
 
   const isInitialLoad = useRef(true);
-
-  // --- AUTH MODAL STATES ---
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState("signin"); // signin | signup | forgot
-  const [authEmail, setAuthEmail] = useState("");
-  const [authFullName, setAuthFullName] = useState("");
-  const [authUsername, setAuthUsername] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [authSuccess, setAuthSuccess] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
 
   // --- THEME ENGINE ---
   useEffect(() => {
@@ -203,8 +157,6 @@ export default function App() {
           __initial_auth_token
         ) {
           await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
         }
       } catch (err) {
         console.error("Authentication Error:", err);
@@ -247,11 +199,30 @@ export default function App() {
 
   // --- READING ENGINE ---
   const pages = useMemo(() => {
-    const words = text.split(/\s+/).filter(Boolean);
+    // Split by paragraphs instead of words to preserve markdown/formatting
+    // A paragraph is generally split by \n
+    const paragraphs = text.split('\n').filter(p => p.trim() !== '');
     const res = [];
-    for (let i = 0; i < words.length; i += WORDS_PER_PAGE) {
-      res.push(words.slice(i, i + WORDS_PER_PAGE).join(" "));
+    let currentPage = [];
+    let currentLength = 0;
+    
+    // Roughly 1500 characters per page to keep it readable and preserve structure
+    const MAX_PAGE_CHARS = 1500;
+
+    for (let p of paragraphs) {
+      if (currentLength + p.length > MAX_PAGE_CHARS && currentPage.length > 0) {
+        res.push(currentPage.join('\n\n'));
+        currentPage = [p];
+        currentLength = p.length;
+      } else {
+        currentPage.push(p);
+        currentLength += p.length;
+      }
     }
+    if (currentPage.length > 0) {
+      res.push(currentPage.join('\n\n'));
+    }
+
     return res.length > 0
       ? res
       : [
@@ -274,10 +245,7 @@ export default function App() {
             const idx = parseInt(
               entry.target.getAttribute("data-page-index") || "0",
             );
-            if (!isNaN(idx)) {
-              setCurrentPage(idx);
-              trackEvent("page_read", { page: idx + 1 });
-            }
+            if (!isNaN(idx)) setCurrentPage(idx);
           }
         });
       },
@@ -305,8 +273,7 @@ export default function App() {
   // --- INTEGRATED: FIXED STREAMING AI ENGINE ---
   const callAi = async (
     prompt,
-    systemPrompt = "You are a helpful scholarly assistant.",
-    contextOverride = null,
+    systemPrompt = "You are a helpful novel reading assistant.",
   ) => {
     setIsAiLoading(true);
     const botMsgId = Date.now();
@@ -332,10 +299,7 @@ export default function App() {
         body: JSON.stringify({
           prompt,
           systemPrompt,
-          context:
-            contextOverride !== null
-              ? contextOverride
-              : pages[currentPage] || "",
+          context: pages[currentPage] || "",
           mode: chatMode,
         }),
       });
@@ -388,18 +352,28 @@ export default function App() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !user || !isPdfReady)
-      return notify("PDF engine not ready", "error");
+    if (!file || !user) return notify("No file selected", "error");
     setIsAiLoading(true);
+    notify("Extracting document layout with AI...", "info");
     try {
-      const buf = await file.arrayBuffer();
-      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-      let fullText = "";
-      for (let i = 1; i <= Math.min(pdf.numPages, 100); i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        fullText += content.items.map((item) => item.str).join(" ") + "\n";
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse_pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const textErr = await response.text();
+        throw new Error(`Parse failed: ${textErr}`);
       }
+
+      const resData = await response.json();
+      if (resData.error) throw new Error(resData.error);
+
+      const fullText = resData.text;
+
       const docRef = await addDoc(
         collection(db, "artifacts", appId, "users", user.uid, "sources"),
         {
@@ -413,123 +387,31 @@ export default function App() {
       setCurrentDocName(file.name);
       setCurrentDocId(docRef.id);
       setCurrentPage(0);
-      notify("Imported Successfully!", "success");
-      trackEvent("book_upload", {
-        method: "pdf",
-        bookName: file.name,
-        pages: pdf.numPages,
-      });
+      notify("Import completed perfectly!", "success");
     } catch (err) {
       console.error("PDF upload error:", err);
-      notify("PDF processing failed", "error");
+      notify("PDF processing failed. Is the server running?", "error");
     } finally {
       setIsAiLoading(false);
-    }
-  };
-
-  // --- IMAGE OCR HANDLER ---
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length || !user) return notify("Please sign in first", "error");
-    if (files.length > 10) return notify("Max 10 images at once", "error");
-
-    setIsOcrLoading(true);
-    setOcrProgress(`Processing ${files.length} image(s)...`);
-
-    try {
-      // Convert all images to base64
-      const images = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const base64 = reader.result.split(",")[1];
-                resolve({ base64, mimeType: file.type || "image/jpeg" });
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            }),
-        ),
-      );
-
-      setOcrProgress(`Extracting text from ${files.length} image(s) via AI...`);
-
-      const response = await fetch("/api/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
-      });
-
-      const result = await response.json();
-      if (result.error) throw new Error(result.error);
-
-      const extractedText = result.text;
-      if (!extractedText.trim())
-        return notify("No text found in images", "error");
-
-      // Save to Firestore
-      const name =
-        files.length === 1
-          ? files[0].name.replace(/\.[^/.]+$/, "") + " (Image)"
-          : `Image Story (${files.length} pages)`;
-
-      const docRef = await addDoc(
-        collection(db, "artifacts", appId, "users", user.uid, "sources"),
-        {
-          name,
-          content: extractedText,
-          date: new Date().toLocaleDateString(),
-          timestamp: Date.now(),
-          type: "image",
-        },
-      );
-
-      setText(extractedText);
-      setCurrentDocName(name);
-      setCurrentDocId(docRef.id);
-      setCurrentPage(0);
-      notify(`Extracted text from ${files.length} image(s)!`, "success");
-      trackEvent("book_upload", {
-        method: "image",
-        bookName: name,
-        imageCount: files.length,
-      });
-    } catch (err) {
-      console.error("OCR error:", err);
-      notify("Image extraction failed: " + err.message, "error");
-    } finally {
-      setIsOcrLoading(false);
-      setOcrProgress("");
-      e.target.value = "";
+      e.target.value = null; // reset input
     }
   };
 
   const handleInsight = async (type) => {
     if (!user) return notify("Sign in for insights", "error");
-    if (!text.trim()) return notify("Load a manuscript first", "error");
     setInsightResult("");
     setInsightType(type);
     let p = "";
-    let s = "You are a literary analyst scholar.";
-
-    // For image imports, use larger context (up to 8000 chars)
-    // For PDFs/regular docs, use current page only
-    const isShortDoc = pages.length === 1;
-    const context = isShortDoc ? text.substring(0, 8000) : null; // null = use current page
-
+    let s = "You are an expert novel analyst and storyteller.";
     if (type === "summary")
-      p = isShortDoc
-        ? "Summarize all the key content from this text concisely."
-        : "Summarize the key events on this page concisely.";
+      p = "Summarize the key events on this page concisely.";
     if (type === "characters")
-      p = "Identify characters mentioned and their motivations.";
+      p = "Identify characters on this page and their current motivations.";
     if (type === "weaver")
       p = "Suggest 3 creative plot directions based on the current scene.";
 
-    const resultText = await callAi(p, s, context);
+    const resultText = await callAi(p, s);
     setInsightResult(resultText);
-    trackEvent("insight_used", { insightType: type });
   };
 
   const notify = (msg, type = "info") => {
@@ -537,28 +419,13 @@ export default function App() {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // --- SILENT ANALYTICS TRACKER ---
-  const trackEvent = async (type, metadata = {}) => {
-    if (!user || user.isAnonymous) return; // only track signed-in users
-    try {
-      await addDoc(collection(db, "analytics", user.uid, "events"), {
-        type,
-        timestamp: Date.now(),
-        date: new Date().toLocaleDateString(),
-        hour: new Date().getHours(),
-        bookId: currentDocId || null,
-        bookName: currentDocName || null,
-        ...metadata,
-      });
-    } catch (e) {
-      // silent fail — never interrupt user experience
-    }
-  };
-
   // --- SMART CHAT HANDLER ---
   const handleChat = async () => {
     if (!userInput.trim() || isAiLoading || !user) return;
-    if (!text.trim()) return notify("Load a manuscript first", "info");
+    if (chatMode === "strict" && !text.trim()) {
+      notify("Please upload a PDF first to use Strict mode.", "info");
+      return;
+    }
     const q = userInput.trim();
     setUserInput("");
     setChatHistory((prev) => [...prev, { role: "user", content: q }]);
@@ -588,7 +455,6 @@ export default function App() {
     }
 
     await callAi(q);
-    trackEvent("chat_message", { query: q.substring(0, 100), mode: chatMode });
   };
 
   const handleTranslate = async () => {
@@ -602,140 +468,6 @@ export default function App() {
     );
     setActiveTab("chat");
     setIsSidebarOpen(true);
-    trackEvent("translation_used", { targetLang: selectedLang });
-  };
-
-  // --- EMAIL AUTH HANDLERS ---
-  const handleAuthSubmit = async () => {
-    setAuthError("");
-    setAuthSuccess("");
-    setIsAuthSubmitting(true);
-    try {
-      if (authMode === "signup") {
-        if (!authFullName.trim()) {
-          setAuthError("Please enter your full name.");
-          return;
-        }
-        if (!authUsername.trim()) {
-          setAuthError("Please enter a username.");
-          return;
-        }
-        if (authUsername.includes(" ")) {
-          setAuthError("Username cannot have spaces.");
-          return;
-        }
-        if (authPassword !== authConfirmPassword) {
-          setAuthError("Passwords do not match.");
-          return;
-        }
-        if (authPassword.length < 6) {
-          setAuthError("Password must be at least 6 characters.");
-          return;
-        }
-
-        // Check if username already taken in Firestore
-        const usernameDoc = await getDoc(
-          doc(db, "usernames", authUsername.toLowerCase()),
-        );
-        if (usernameDoc.exists()) {
-          setAuthError("Username already taken. Try another.");
-          return;
-        }
-
-        // Create Firebase auth user
-        const userCred = await createUserWithEmailAndPassword(
-          auth,
-          authEmail,
-          authPassword,
-        );
-
-        // Update Firebase display name
-        await updateProfile(userCred.user, { displayName: authFullName });
-
-        // Store user profile in Firestore
-        await setDoc(doc(db, "users", userCred.user.uid), {
-          uid: userCred.user.uid,
-          fullName: authFullName,
-          username: authUsername.toLowerCase(),
-          email: authEmail,
-          createdAt: Date.now(),
-          provider: "email",
-        });
-
-        // Reserve username
-        await setDoc(doc(db, "usernames", authUsername.toLowerCase()), {
-          uid: userCred.user.uid,
-        });
-
-        // Auto signed-in by Firebase — just close modal
-        setShowAuthModal(false);
-        notify(
-          "Welcome to Novel Quest, " + authFullName.split(" ")[0] + "!",
-          "success",
-        );
-        trackEvent("signup", { method: "email", username: authUsername });
-      } else if (authMode === "signin") {
-        const userCred = await signInWithEmailAndPassword(
-          auth,
-          authEmail,
-          authPassword,
-        );
-
-        // Fetch user profile from Firestore
-        const profileDoc = await getDoc(doc(db, "users", userCred.user.uid));
-        if (profileDoc.exists()) {
-          const profile = profileDoc.data();
-          notify(
-            "Welcome back, " + profile.fullName.split(" ")[0] + "!",
-            "success",
-          );
-        } else {
-          notify("Signed in successfully!", "success");
-        }
-        setShowAuthModal(false);
-        trackEvent("signin", { method: "email" });
-      } else if (authMode === "forgot") {
-        if (!authEmail.trim()) {
-          setAuthError("Please enter your email address.");
-          return;
-        }
-        await sendPasswordResetEmail(auth, authEmail, {
-          url: window.location.origin, // redirect back to app after reset
-        });
-        setAuthSuccess("Reset email sent! Check your inbox (and spam folder).");
-      }
-    } catch (err) {
-      const msg =
-        err.code === "auth/user-not-found"
-          ? "No account found with this email."
-          : err.code === "auth/wrong-password"
-            ? "Incorrect password."
-            : err.code === "auth/invalid-credential"
-              ? "Incorrect email or password."
-              : err.code === "auth/email-already-in-use"
-                ? "Email already in use. Try signing in."
-                : err.code === "auth/invalid-email"
-                  ? "Invalid email address."
-                  : err.code === "auth/too-many-requests"
-                    ? "Too many attempts. Try again later."
-                    : err.message;
-      setAuthError(msg);
-    } finally {
-      setIsAuthSubmitting(false);
-    }
-  };
-
-  const openAuthModal = (mode) => {
-    setAuthMode(mode);
-    setAuthEmail("");
-    setAuthPassword("");
-    setAuthConfirmPassword("");
-    setAuthFullName("");
-    setAuthUsername("");
-    setAuthError("");
-    setAuthSuccess("");
-    setShowPassword(false);
-    setShowAuthModal(true);
   };
 
   const handleGoogleSignIn = async () => {
@@ -744,10 +476,26 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
+      localStorage.setItem("nq_started", "true");
+      setHasStarted(true);
       notify("Signed in with Google", "success");
-      trackEvent("signin", { method: "google" });
     } catch (err) {
       notify("Authentication failed", "error");
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    if (isSigningIn) return;
+    setIsSigningIn(true);
+    try {
+      await signInAnonymously(auth);
+      localStorage.setItem("nq_started", "true");
+      setHasStarted(true);
+      notify("Continuing as Guest", "success");
+    } catch(err) {
+      notify("Guest Sign In Failed", "error");
     } finally {
       setIsSigningIn(false);
     }
@@ -771,64 +519,34 @@ export default function App() {
         </div>
       </div>
     );
-
-  const NavItem = ({ id, icon: Icon, label }) => (
-    <button
-      onClick={() => {
-        setActiveTab(id);
-        setIsSidebarOpen(true);
-      }}
-      className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all
-        ${activeTab === id && isSidebarOpen ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-inner" : "text-zinc-400"}`}
-    >
-      <Icon size={20} />
-      <span className="text-[9px] font-black uppercase tracking-tight">
-        {label}
-      </span>
-    </button>
-  );
+  if (!user || (!hasStarted && user.isAnonymous)) {
+    return (
+      <LandingPage 
+        handleGoogleSignIn={handleGoogleSignIn}
+        handleGuestSignIn={handleGuestSignIn}
+        isSigningIn={isSigningIn}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-[100dvh] bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans">
-      {/* MOBILE HEADER */}
-      <header className="md:hidden sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 z-40 px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-2 overflow-hidden max-w-[60%]">
-          <BookOpen size={16} className="text-amber-500 shrink-0" />
-          <h1 className="text-xs font-black uppercase tracking-widest truncate">
-            {currentDocName}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-black text-amber-500">
-            {readProgress}%
-          </span>
-          <button
-            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-            className="p-1 text-zinc-400"
-          >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-        <div
-          className="absolute bottom-0 left-0 h-[2.5px] bg-amber-500 transition-all duration-700 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
-          style={{ width: `${readProgress}%` }}
-        />
-      </header>
+      <MobileHeader 
+        currentDocName={currentDocName}
+        readProgress={readProgress}
+        theme={theme}
+        setTheme={setTheme}
+      />
 
       <div className="flex flex-1 overflow-hidden relative">
         <nav className="hidden md:flex w-20 border-r border-zinc-200 dark:border-zinc-800 flex-col items-center py-8 gap-8 bg-white dark:bg-zinc-900 z-50">
           <div className="p-3 bg-amber-500 rounded-2xl text-white shadow-lg shadow-amber-500/20 transition-transform hover:scale-105">
             <BookOpen size={24} />
           </div>
-          <div className="relative">
-            <NavItem id="library" icon={Library} label="Library" />
-            {user && !user.isAnonymous && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full border-2 border-white dark:border-zinc-900" />
-            )}
-          </div>
-          <NavItem id="insights" icon={Sparkles} label="Magic" />
-          <NavItem id="chat" icon={MessageSquare} label="Chat" />
-          <NavItem id="navigator" icon={Layers} label="Pages" />
+          <NavItem id="library" icon={Library} label="Library" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+          <NavItem id="insights" icon={Sparkles} label="Magic" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+          <NavItem id="chat" icon={MessageSquare} label="Chat" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+          <NavItem id="navigator" icon={Layers} label="Pages" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
           <div className="mt-auto flex flex-col gap-4">
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -870,8 +588,23 @@ export default function App() {
                   <span className="absolute top-6 right-8 text-[10px] font-black text-zinc-200 dark:text-zinc-800 uppercase tracking-widest transition-colors group-hover:text-amber-500">
                     Page {i + 1}
                   </span>
-                  <div className="font-serif text-lg md:text-xl leading-relaxed text-zinc-800 dark:text-zinc-300 whitespace-pre-wrap select-text">
-                    {p}
+                  <div className="font-serif text-lg md:text-xl leading-relaxed text-zinc-800 dark:text-zinc-300 select-text w-full">
+                    <ReactMarkdown
+                      components={{
+                        h1: ({node, ...props}) => <h1 className="text-3xl font-black mb-6 mt-1 text-zinc-900 dark:text-white" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-2xl font-bold mb-4 mt-8 text-zinc-900 dark:text-white" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-xl font-bold mb-3 mt-6 text-zinc-900 dark:text-white" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-6 whitespace-pre-wrap leading-relaxed" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc pl-6 mb-6 space-y-2" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal pl-6 mb-6 space-y-2" {...props} />,
+                        li: ({node, ...props}) => <li className="" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold text-amber-600 dark:text-amber-400" {...props} />,
+                        em: ({node, ...props}) => <em className="italic text-zinc-600 dark:text-zinc-400" {...props} />,
+                        blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-amber-500/50 pl-4 italic text-zinc-600 dark:text-zinc-400 my-6" {...props} />,
+                      }}
+                    >
+                      {p}
+                    </ReactMarkdown>
                   </div>
                 </article>
               ))}
@@ -919,87 +652,24 @@ export default function App() {
                         )}
                         Continue with Google
                       </button>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                        <span className="text-[10px] font-black uppercase text-zinc-400">
-                          or
-                        </span>
-                        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                      </div>
-                      <button
-                        onClick={() => openAuthModal("signin")}
-                        className="w-full py-4 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-100 rounded-2xl font-black text-xs uppercase shadow-sm flex items-center justify-center gap-2"
-                      >
-                        <Mail size={16} /> Sign In with Email
-                      </button>
-                      <button
-                        onClick={() => openAuthModal("signup")}
-                        className="w-full py-3 text-[10px] font-black uppercase text-amber-600 border border-amber-200 rounded-xl"
-                      >
-                        Create New Account
-                      </button>
                     </div>
                   ) : (
                     <>
-                      {/* UPLOAD OPTIONS */}
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* PDF Upload */}
-                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-amber-500 cursor-pointer transition-all group">
-                          <FileUp
-                            size={26}
-                            className="text-zinc-300 group-hover:text-amber-500 mb-2 transition-colors"
-                          />
-                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
-                            Upload PDF
-                          </span>
-                          <input
-                            type="file"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            accept=".pdf"
-                          />
-                        </label>
-
-                        {/* Image Upload */}
-                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-purple-500 cursor-pointer transition-all group">
-                          <ImagePlus
-                            size={26}
-                            className="text-zinc-300 group-hover:text-purple-500 mb-2 transition-colors"
-                          />
-                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
-                            Story Images
-                          </span>
-                          <input
-                            type="file"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                            accept="image/*"
-                            multiple
-                          />
-                        </label>
-                      </div>
-
-                      {/* OCR Loading State */}
-                      {(isOcrLoading || isAiLoading) && ocrProgress && (
-                        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 flex items-center gap-3">
-                          <ScanText
-                            size={18}
-                            className="text-purple-500 shrink-0 animate-pulse"
-                          />
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-purple-600">
-                              {ocrProgress}
-                            </p>
-                            <p className="text-[9px] text-purple-400 mt-0.5">
-                              AI is reading your images...
-                            </p>
-                          </div>
-                          <Loader2
-                            size={16}
-                            className="animate-spin text-purple-400 ml-auto shrink-0"
-                          />
-                        </div>
-                      )}
+                      <label className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-amber-500 cursor-pointer transition-all group">
+                        <FileUp
+                          size={32}
+                          className="text-zinc-300 group-hover:text-amber-500 mb-2 transition-colors"
+                        />
+                        <span className="text-[10px] font-black uppercase text-zinc-500">
+                          Upload PDF
+                        </span>
+                        <input
+                          type="file"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          accept=".pdf"
+                        />
+                      </label>
                       <div className="space-y-3">
                         <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
                           Collections
@@ -1016,10 +686,6 @@ export default function App() {
                                 setCurrentDocId(s.id);
                                 setIsSidebarOpen(false);
                                 isInitialLoad.current = true;
-                                trackEvent("book_open", {
-                                  bookName: s.name,
-                                  bookId: s.id,
-                                });
                               }}
                               className="flex-1 text-left min-w-0"
                             >
@@ -1051,39 +717,12 @@ export default function App() {
                           </div>
                         ))}
                       </div>
-                      {/* USER PROFILE CARD */}
-                      <div className="mt-8 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-md shadow-amber-500/20">
-                            {(user?.displayName ||
-                              user?.email ||
-                              "?")[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-black truncate text-zinc-800 dark:text-zinc-100">
-                              {user?.displayName || "Reader"}
-                            </p>
-                            <p className="text-[10px] text-zinc-400 truncate">
-                              {user?.email}
-                            </p>
-                          </div>
-                          <div
-                            className="w-2 h-2 rounded-full bg-green-500 shrink-0"
-                            title="Signed in"
-                          />
-                        </div>
-                        <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-                          <span className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase flex items-center gap-1">
-                            <Check size={11} /> Synced
-                          </span>
-                          <button
-                            onClick={() => signOut(auth)}
-                            className="text-[10px] font-black uppercase text-zinc-400 hover:text-red-500 transition-colors flex items-center gap-1"
-                          >
-                            <LogOut size={12} /> Sign Out
-                          </button>
-                        </div>
-                      </div>
+                      <button
+                        onClick={() => signOut(auth)}
+                        className="w-full py-3 text-[10px] font-black uppercase text-zinc-400 border border-zinc-100 rounded-xl mt-8"
+                      >
+                        Sign Out
+                      </button>
                     </>
                   )}
                 </div>
@@ -1155,7 +794,7 @@ export default function App() {
                             ...prev,
                             {
                               role: "bot",
-                              content: `**✨ Magic Insight (${insightType}):**\n${insightResult}`,
+                              content: `✨ Magic Insight (${insightType}):\n${insightResult}`,
                             },
                           ]);
                           setActiveTab("chat");
@@ -1181,7 +820,7 @@ export default function App() {
                 <div className="flex flex-col h-full space-y-4">
                   <div className="flex items-center justify-between p-2 mb-4 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
                     <div className="flex items-center gap-2 px-2">
-                      <BrainCircuit
+                       <BrainCircuit
                         size={14}
                         className={
                           chatMode === "strict"
@@ -1193,16 +832,27 @@ export default function App() {
                         Mode: {chatMode}
                       </span>
                     </div>
-                    <button
-                      onClick={() =>
-                        setChatMode((m) =>
-                          m === "strict" ? "global" : "strict",
-                        )
-                      }
-                      className="text-[9px] font-black uppercase bg-amber-500 text-white px-3 py-1 rounded-lg shadow-sm active:scale-95 transition-transform"
-                    >
-                      Switch to {chatMode === "strict" ? "Global" : "Strict"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                       <button
+                        onClick={() => {
+                           if(confirm("Clear conversation?")) setChatHistory([]);
+                        }}
+                        className="text-[9px] text-zinc-500 hover:text-red-500 font-black uppercase p-1 rounded-lg transition-colors"
+                        title="Clear Conversation"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setChatMode((m) =>
+                            m === "strict" ? "global" : "strict",
+                          )
+                        }
+                        className="text-[9px] font-black uppercase bg-amber-500 text-white px-3 py-1 rounded-lg shadow-sm active:scale-95 transition-transform"
+                      >
+                        {chatMode === "strict" ? "Global" : "Strict"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex-1 space-y-6 overflow-y-auto pb-24 custom-scrollbar">
@@ -1253,7 +903,7 @@ export default function App() {
                         value={userInput}
                         onChange={(e) => setUserInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleChat()}
-                        placeholder="Ask AI scholarly questions..."
+                        placeholder="Ask about the plot, characters, or lore..."
                         className="w-full p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl text-sm focus:ring-2 focus:ring-amber-500 outline-none shadow-inner"
                       />
                       <button
@@ -1291,10 +941,10 @@ export default function App() {
       </div>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex justify-around items-center z-[110] px-2 shadow-[0_-8px_30px_rgba(0,0,0,0.1)]">
-        <NavItem id="library" icon={Library} label="Library" />
-        <NavItem id="insights" icon={Sparkles} label="Magic" />
-        <NavItem id="chat" icon={MessageSquare} label="Chat" />
-        <NavItem id="navigator" icon={Layers} label="Pages" />
+        <NavItem id="library" icon={Library} label="Library" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+        <NavItem id="insights" icon={Sparkles} label="Magic" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+        <NavItem id="chat" icon={MessageSquare} label="Chat" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
+        <NavItem id="navigator" icon={Layers} label="Pages" activeTab={activeTab} isSidebarOpen={isSidebarOpen} setActiveTab={setActiveTab} setIsSidebarOpen={setIsSidebarOpen} />
         <button
           onClick={hardReset}
           className="flex flex-col items-center p-2 text-zinc-400"
@@ -1304,276 +954,7 @@ export default function App() {
         </button>
       </nav>
 
-      {notification && (
-        <div
-          className={`fixed bottom-20 md:bottom-10 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:max-w-xs p-4 rounded-3xl shadow-2xl z-[200] flex items-center gap-3 animate-in border ${notification.type === "error" ? "bg-red-600 text-white" : "bg-zinc-900 text-white"}`}
-        >
-          {notification.type === "error" ? (
-            <AlertCircle size={20} />
-          ) : (
-            <Check size={20} />
-          )}
-          <span className="text-[10px] font-bold uppercase tracking-widest">
-            {notification.text}
-          </span>
-          <button
-            onClick={() => setNotification(null)}
-            className="ml-auto opacity-50"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* AUTH MODAL */}
-      {showAuthModal && (
-        <div
-          className="fixed inset-0 z-[500] flex items-center justify-center p-4"
-          onClick={() => setShowAuthModal(false)}
-        >
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-          <div
-            className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-[2rem] shadow-2xl border border-zinc-200 dark:border-zinc-800 p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close */}
-            <button
-              onClick={() => setShowAuthModal(false)}
-              className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-600 rounded-xl"
-            >
-              <X size={18} />
-            </button>
-
-            {/* Header */}
-            <div className="mb-6">
-              <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-amber-500/20">
-                <BookOpen size={22} className="text-white" />
-              </div>
-              <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-100">
-                {authMode === "signup"
-                  ? "Create Account"
-                  : authMode === "forgot"
-                    ? "Reset Password"
-                    : "Welcome Back"}
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                {authMode === "signup"
-                  ? "Start your reading journey"
-                  : authMode === "forgot"
-                    ? "We will send a reset link to your email"
-                    : "Sign in to your account"}
-              </p>
-            </div>
-
-            {/* Fields */}
-            <div className="space-y-3">
-              {/* Full Name - signup only */}
-              {authMode === "signup" && (
-                <div className="relative">
-                  <User
-                    size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Full Name"
-                    value={authFullName}
-                    onChange={(e) => setAuthFullName(e.target.value)}
-                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              )}
-
-              {/* Username - signup only */}
-              {authMode === "signup" && (
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm font-bold">
-                    @
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Username (no spaces)"
-                    value={authUsername}
-                    onChange={(e) =>
-                      setAuthUsername(
-                        e.target.value.toLowerCase().replace(/\s/g, ""),
-                      )
-                    }
-                    className="w-full pl-8 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              )}
-
-              {/* Email */}
-              <div className="relative">
-                <Mail
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              {/* Password */}
-              {authMode !== "forgot" && (
-                <div className="relative">
-                  <KeyRound
-                    size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                  />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Password"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
-                    className="w-full pl-9 pr-10 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                  <button
-                    onClick={() => setShowPassword((p) => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              )}
-
-              {/* Confirm Password - signup only */}
-              {authMode === "signup" && (
-                <div className="relative">
-                  <KeyRound
-                    size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                  />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Confirm Password"
-                    value={authConfirmPassword}
-                    onChange={(e) => setAuthConfirmPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
-                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Error / Success */}
-            {authError && (
-              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl flex items-center gap-2">
-                <AlertCircle size={14} className="text-red-500 shrink-0" />
-                <p className="text-[11px] text-red-600 dark:text-red-400">
-                  {authError}
-                </p>
-              </div>
-            )}
-            {authSuccess && (
-              <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl flex items-center gap-2">
-                <Check size={14} className="text-green-500 shrink-0" />
-                <p className="text-[11px] text-green-600 dark:text-green-400">
-                  {authSuccess}
-                </p>
-              </div>
-            )}
-
-            {/* Submit */}
-            <button
-              onClick={handleAuthSubmit}
-              disabled={isAuthSubmitting}
-              className="mt-4 w-full py-3.5 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
-            >
-              {isAuthSubmitting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : null}
-              {authMode === "signup"
-                ? "Create Account"
-                : authMode === "forgot"
-                  ? "Send Reset Email"
-                  : "Sign In"}
-            </button>
-
-            {/* Footer links */}
-            <div className="mt-4 flex flex-col items-center gap-2">
-              {authMode === "signin" && (
-                <>
-                  <button
-                    onClick={() => {
-                      setAuthMode("forgot");
-                      setAuthError("");
-                      setAuthSuccess("");
-                    }}
-                    className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
-                  >
-                    Forgot password?
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAuthMode("signup");
-                      setAuthError("");
-                      setAuthSuccess("");
-                    }}
-                    className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
-                  >
-                    Don't have an account?{" "}
-                    <span className="font-black">Sign Up</span>
-                  </button>
-                </>
-              )}
-              {authMode === "signup" && (
-                <button
-                  onClick={() => {
-                    setAuthMode("signin");
-                    setAuthError("");
-                    setAuthSuccess("");
-                  }}
-                  className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
-                >
-                  Already have an account?{" "}
-                  <span className="font-black">Sign In</span>
-                </button>
-              )}
-              {authMode === "forgot" && (
-                <button
-                  onClick={() => {
-                    setAuthMode("signin");
-                    setAuthError("");
-                    setAuthSuccess("");
-                  }}
-                  className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
-                >
-                  Back to Sign In
-                </button>
-              )}
-            </div>
-
-            {/* Divider + Google */}
-            {authMode !== "forgot" && (
-              <>
-                <div className="flex items-center gap-3 mt-4">
-                  <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                  <span className="text-[10px] font-black uppercase text-zinc-400">
-                    or
-                  </span>
-                  <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                </div>
-                <button
-                  onClick={() => {
-                    setShowAuthModal(false);
-                    handleGoogleSignIn();
-                  }}
-                  className="mt-3 w-full py-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl font-black text-xs uppercase text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2"
-                >
-                  <LogIn size={14} /> Continue with Google
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <Notification notification={notification} setNotification={setNotification} />
 
       <style>{`
         .animate-in { animation: fadeIn 0.3s ease-out; }
