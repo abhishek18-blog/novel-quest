@@ -6,7 +6,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import tempfile
-import pymupdf4llm
 
 load_dotenv(find_dotenv())
 app = Flask(__name__)
@@ -15,6 +14,7 @@ CORS(app)
 
 @app.route('/api/parse_pdf', methods=['POST'])
 def parse_pdf():
+    import pymupdf4llm
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
     file = request.files['file']
