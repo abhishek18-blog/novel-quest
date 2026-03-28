@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import LandingPage from "./components/LandingPage";
 import {
   BookOpen,
   MessageSquare,
@@ -102,6 +103,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [hasStarted, setHasStarted] = useState(() => localStorage.getItem("nq_started") === "true");
 
   // --- PERSISTENT STATES ---
   const [text, setText] = useState(() => localStorage.getItem("nq_text") || "");
@@ -704,6 +706,18 @@ export default function App() {
         </div>
       </div>
     );
+
+  if ((!user || user.isAnonymous) && !hasStarted) {
+    return (
+      <LandingPage
+        onGetStarted={() => {
+          setHasStarted(true);
+          localStorage.setItem("nq_started", "true");
+          openAuthModal("signup");
+        }}
+      />
+    );
+  }
 
   const NavItem = ({ id, icon: Icon, label }) => (
     <button
