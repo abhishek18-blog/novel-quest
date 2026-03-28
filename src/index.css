@@ -1,3 +1,47 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 @tailwind utilities;
+
+@layer utilities {
+  .markdown-prose {
+    h1 {
+      @apply text-3xl font-bold mt-8 mb-4 tracking-tight;
+    }
+
+    h2 {
+      @apply text-2xl font-bold mt-6 mb-3 tracking-tight;
+    }
+
+    h3 {
+      @apply text-xl font-bold mt-5 mb-2;
+    }
+
+    p {
+      @apply leading-relaxed mb-4;
+    }
+
+    ul {
+      @apply list-disc list-inside mb-4 space-y-1 ml-2;
+    }
+
+    ol {
+      @apply list-decimal list-inside mb-4 space-y-1 ml-2;
+    }
+
+    li {
+      @apply leading-relaxed;
+    }
+
+    strong {
+      @apply font-bold text-amber-600 dark:text-amber-500;
+    }
+
+    em {
+      @apply italic;
+    }
+
+    blockquote {
+      @apply border-l-4 border-amber-500 pl-4 italic opacity-80 my-4;
+    }
+  }
+}

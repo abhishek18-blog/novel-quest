@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   BookOpen,
   MessageSquare,
@@ -137,8 +138,6 @@ export default function App() {
   const [isPdfReady, setIsPdfReady] = useState(false);
   const [selectedLang, setSelectedLang] = useState("hi");
   const [chatMode, setChatMode] = useState("strict");
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState("");
 
   const isInitialLoad = useRef(true);
 
@@ -177,22 +176,7 @@ export default function App() {
     localStorage.setItem("nq_page", currentPage.toString());
   }, [text, currentDocId, currentDocName, chatHistory, currentPage]);
 
-  // --- PDF ENGINE LOADER ---
-  useEffect(() => {
-    if (window.pdfjsLib) {
-      setIsPdfReady(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
-    script.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
-      setIsPdfReady(true);
-    };
-    document.head.appendChild(script);
-  }, []);
+  // --- PDF ENGINE REMOVED (now handled perfectly in backend) ---
 
   // --- AUTH INITIALIZATION ---
   useEffect(() => {
@@ -247,16 +231,30 @@ export default function App() {
 
   // --- READING ENGINE ---
   const pages = useMemo(() => {
-    const words = text.split(/\s+/).filter(Boolean);
+    // Split by blocks/paragraphs so we don't break markdown elements mid-tag
+    const blocks = text.split(/\n+/).filter(Boolean);
     const res = [];
-    for (let i = 0; i < words.length; i += WORDS_PER_PAGE) {
-      res.push(words.slice(i, i + WORDS_PER_PAGE).join(" "));
+    let currentChunk = [];
+    let currentLen = 0;
+    
+    for (let i = 0; i < blocks.length; i++) {
+       const block = blocks[i];
+       const wordsInBlock = block.split(/\s+/).length + 1;
+       if (currentLen + wordsInBlock > WORDS_PER_PAGE && currentChunk.length > 0) {
+           res.push(currentChunk.join("\n\n"));
+           currentChunk = [block];
+           currentLen = wordsInBlock;
+       } else {
+           currentChunk.push(block);
+           currentLen += wordsInBlock;
+       }
+    }
+    if (currentChunk.length > 0) {
+        res.push(currentChunk.join("\n\n"));
     }
     return res.length > 0
       ? res
-      : [
-          "No manuscript loaded. Use the Library to upload a PDF or start writing.",
-        ];
+      : ["No manuscript loaded. Use the Library to upload a PDF or start writing."];
   }, [text]);
 
   const readProgress = useMemo(() => {
@@ -388,18 +386,30 @@ export default function App() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !user || !isPdfReady)
-      return notify("PDF engine not ready", "error");
+    if (!file || !user) return notify("Please sign in first", "error");
+    
     setIsAiLoading(true);
+    notify("Parsing PDF Structure... this may take a moment", "info");
+    
     try {
-      const buf = await file.arrayBuffer();
-      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-      let fullText = "";
-      for (let i = 1; i <= Math.min(pdf.numPages, 100); i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        fullText += content.items.map((item) => item.str).join(" ") + "\n";
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse_pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
       }
+      
+      const result = await response.json();
+      if (result.error) throw new Error(result.error);
+      
+      const fullText = result.text;
+      
       const docRef = await addDoc(
         collection(db, "artifacts", appId, "users", user.uid, "sources"),
         {
@@ -409,98 +419,21 @@ export default function App() {
           timestamp: Date.now(),
         },
       );
+      
       setText(fullText);
       setCurrentDocName(file.name);
       setCurrentDocId(docRef.id);
       setCurrentPage(0);
-      notify("Imported Successfully!", "success");
+      notify("Import Completed Beautifully!", "success");
       trackEvent("book_upload", {
-        method: "pdf",
+        method: "pdf_pymupdf",
         bookName: file.name,
-        pages: pdf.numPages,
       });
     } catch (err) {
       console.error("PDF upload error:", err);
       notify("PDF processing failed", "error");
     } finally {
       setIsAiLoading(false);
-    }
-  };
-
-  // --- IMAGE OCR HANDLER ---
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length || !user) return notify("Please sign in first", "error");
-    if (files.length > 10) return notify("Max 10 images at once", "error");
-
-    setIsOcrLoading(true);
-    setOcrProgress(`Processing ${files.length} image(s)...`);
-
-    try {
-      // Convert all images to base64
-      const images = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const base64 = reader.result.split(",")[1];
-                resolve({ base64, mimeType: file.type || "image/jpeg" });
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            }),
-        ),
-      );
-
-      setOcrProgress(`Extracting text from ${files.length} image(s) via AI...`);
-
-      const response = await fetch("/api/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images }),
-      });
-
-      const result = await response.json();
-      if (result.error) throw new Error(result.error);
-
-      const extractedText = result.text;
-      if (!extractedText.trim())
-        return notify("No text found in images", "error");
-
-      // Save to Firestore
-      const name =
-        files.length === 1
-          ? files[0].name.replace(/\.[^/.]+$/, "") + " (Image)"
-          : `Image Story (${files.length} pages)`;
-
-      const docRef = await addDoc(
-        collection(db, "artifacts", appId, "users", user.uid, "sources"),
-        {
-          name,
-          content: extractedText,
-          date: new Date().toLocaleDateString(),
-          timestamp: Date.now(),
-          type: "image",
-        },
-      );
-
-      setText(extractedText);
-      setCurrentDocName(name);
-      setCurrentDocId(docRef.id);
-      setCurrentPage(0);
-      notify(`Extracted text from ${files.length} image(s)!`, "success");
-      trackEvent("book_upload", {
-        method: "image",
-        bookName: name,
-        imageCount: files.length,
-      });
-    } catch (err) {
-      console.error("OCR error:", err);
-      notify("Image extraction failed: " + err.message, "error");
-    } finally {
-      setIsOcrLoading(false);
-      setOcrProgress("");
       e.target.value = "";
     }
   };
@@ -870,8 +803,8 @@ export default function App() {
                   <span className="absolute top-6 right-8 text-[10px] font-black text-zinc-200 dark:text-zinc-800 uppercase tracking-widest transition-colors group-hover:text-amber-500">
                     Page {i + 1}
                   </span>
-                  <div className="font-serif text-lg md:text-xl leading-relaxed text-zinc-800 dark:text-zinc-300 whitespace-pre-wrap select-text">
-                    {p}
+                  <div className="font-serif text-lg md:text-xl leading-relaxed text-zinc-800 dark:text-zinc-300 select-text prose prose-zinc dark:prose-invert prose-lg max-w-none">
+                    <ReactMarkdown>{p}</ReactMarkdown>
                   </div>
                 </article>
               ))}
@@ -880,17 +813,17 @@ export default function App() {
         </main>
 
         <aside
-          className={`fixed inset-0 md:relative md:inset-auto z-[100] md:z-auto transition-all duration-300 overflow-hidden flex
-          ${isSidebarOpen ? "w-full md:w-[420px]" : "w-0"}`}
+          className={`fixed inset-y-0 right-0 md:relative md:inset-auto z-[100] md:z-auto transition-all duration-300 overflow-hidden flex shadow-2xl md:shadow-none shrink-0 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900
+          ${isSidebarOpen ? "w-full md:w-[400px]" : "w-0"}`}
         >
-          <div className="flex-1 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col shadow-2xl md:shadow-none h-full">
-            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-950/20">
+          <div className="flex-1 flex flex-col h-full min-w-[100vw] md:min-w-[400px]">
+            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-950/20 shrink-0">
               <h2 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
                 {activeTab}
               </h2>
               <button
                 onClick={() => setIsSidebarOpen(false)}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors shrink-0"
               >
                 <X size={20} />
               </button>
@@ -899,192 +832,141 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-6 pb-28 md:pb-6 relative custom-scrollbar">
               {activeTab === "library" && (
                 <div className="space-y-6">
-                  {!user || user.isAnonymous ? (
-                    <div className="space-y-4 py-8 text-center">
-                      <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto text-amber-500 mb-2">
-                        <User size={32} />
+                  {/* UPLOAD OPTIONS ALWAYS VISIBLE */}
+                  <div className="grid grid-cols-1 gap-3">
+                    {/* PDF Upload */}
+                    <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-amber-500 cursor-pointer transition-all group">
+                      <FileUp
+                        size={26}
+                        className="text-zinc-300 group-hover:text-amber-500 mb-2 transition-colors"
+                      />
+                      <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
+                        Upload Structured PDF
+                      </span>
+                      <input
+                        type="file"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        accept=".pdf"
+                      />
+                    </label>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
+                      Collections
+                    </h3>
+                    {sources.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${currentDocId === s.id ? "border-amber-500 bg-amber-50 dark:bg-amber-900/10" : "border-zinc-100 dark:hover:bg-zinc-800"}`}
+                      >
+                        <button
+                          onClick={() => {
+                            setText(s.content);
+                            setCurrentDocName(s.name);
+                            setCurrentDocId(s.id);
+                            setIsSidebarOpen(false);
+                            isInitialLoad.current = true;
+                            trackEvent("book_open", {
+                              bookName: s.name,
+                              bookId: s.id,
+                            });
+                          }}
+                          className="flex-1 text-left min-w-0"
+                        >
+                          <p className="text-xs font-bold truncate">
+                            {s.name}
+                          </p>
+                          <p className="text-[10px] text-zinc-400 mt-1">
+                            {s.date}
+                          </p>
+                        </button>
+                        <button
+                          onClick={() =>
+                            deleteDoc(
+                              doc(
+                                db,
+                                "artifacts",
+                                appId,
+                                "users",
+                                user.uid,
+                                "sources",
+                                s.id,
+                              ),
+                            )
+                          }
+                          className="text-zinc-300 hover:text-red-500 shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
-                      <p className="text-sm text-zinc-500 px-4">
-                        Sign in to sync manuscripts.
+                    ))}
+                    {sources.length === 0 && (
+                      <p className="text-xs text-zinc-400 text-center py-4">No collections yet.</p>
+                    )}
+                  </div>
+
+                  {/* USER ACCOUNT / SIGN IN */}
+                  {!user || user.isAnonymous ? (
+                    <div className="mt-8 space-y-4 py-6 px-4 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl text-center">
+                      <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center mx-auto text-amber-500 mb-2">
+                        <User size={20} />
+                      </div>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 px-2 font-medium">
+                        Sign in to sync your library across devices
                       </p>
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isSigningIn}
-                        className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg transition-transform flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-amber-500 text-white rounded-xl font-black text-xs uppercase shadow-md transition-transform flex items-center justify-center gap-2"
                       >
                         {isSigningIn ? (
                           <Loader2 className="animate-spin" size={16} />
                         ) : (
                           <LogIn size={16} />
                         )}
-                        Continue with Google
+                        Sign In with Google
                       </button>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                        <span className="text-[10px] font-black uppercase text-zinc-400">
-                          or
-                        </span>
-                        <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />
-                      </div>
                       <button
                         onClick={() => openAuthModal("signin")}
-                        className="w-full py-4 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-100 rounded-2xl font-black text-xs uppercase shadow-sm flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-100 rounded-xl font-black text-[10px] uppercase shadow-sm flex items-center justify-center gap-2"
                       >
-                        <Mail size={16} /> Sign In with Email
-                      </button>
-                      <button
-                        onClick={() => openAuthModal("signup")}
-                        className="w-full py-3 text-[10px] font-black uppercase text-amber-600 border border-amber-200 rounded-xl"
-                      >
-                        Create New Account
+                        <Mail size={14} /> Sign In with Email
                       </button>
                     </div>
                   ) : (
-                    <>
-                      {/* UPLOAD OPTIONS */}
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* PDF Upload */}
-                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-amber-500 cursor-pointer transition-all group">
-                          <FileUp
-                            size={26}
-                            className="text-zinc-300 group-hover:text-amber-500 mb-2 transition-colors"
-                          />
-                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
-                            Upload PDF
-                          </span>
-                          <input
-                            type="file"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            accept=".pdf"
-                          />
-                        </label>
-
-                        {/* Image Upload */}
-                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-purple-500 cursor-pointer transition-all group">
-                          <ImagePlus
-                            size={26}
-                            className="text-zinc-300 group-hover:text-purple-500 mb-2 transition-colors"
-                          />
-                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
-                            Story Images
-                          </span>
-                          <input
-                            type="file"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                            accept="image/*"
-                            multiple
-                          />
-                        </label>
-                      </div>
-
-                      {/* OCR Loading State */}
-                      {(isOcrLoading || isAiLoading) && ocrProgress && (
-                        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 flex items-center gap-3">
-                          <ScanText
-                            size={18}
-                            className="text-purple-500 shrink-0 animate-pulse"
-                          />
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-purple-600">
-                              {ocrProgress}
-                            </p>
-                            <p className="text-[9px] text-purple-400 mt-0.5">
-                              AI is reading your images...
-                            </p>
-                          </div>
-                          <Loader2
-                            size={16}
-                            className="animate-spin text-purple-400 ml-auto shrink-0"
-                          />
+                    <div className="mt-8 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-md shadow-amber-500/20">
+                          {(user?.displayName ||
+                            user?.email ||
+                            "?")[0].toUpperCase()}
                         </div>
-                      )}
-                      <div className="space-y-3">
-                        <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
-                          Collections
-                        </h3>
-                        {sources.map((s) => (
-                          <div
-                            key={s.id}
-                            className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${currentDocId === s.id ? "border-amber-500 bg-amber-50 dark:bg-amber-900/10" : "border-zinc-100 dark:hover:bg-zinc-800"}`}
-                          >
-                            <button
-                              onClick={() => {
-                                setText(s.content);
-                                setCurrentDocName(s.name);
-                                setCurrentDocId(s.id);
-                                setIsSidebarOpen(false);
-                                isInitialLoad.current = true;
-                                trackEvent("book_open", {
-                                  bookName: s.name,
-                                  bookId: s.id,
-                                });
-                              }}
-                              className="flex-1 text-left min-w-0"
-                            >
-                              <p className="text-xs font-bold truncate">
-                                {s.name}
-                              </p>
-                              <p className="text-[10px] text-zinc-400 mt-1">
-                                {s.date}
-                              </p>
-                            </button>
-                            <button
-                              onClick={() =>
-                                deleteDoc(
-                                  doc(
-                                    db,
-                                    "artifacts",
-                                    appId,
-                                    "users",
-                                    user.uid,
-                                    "sources",
-                                    s.id,
-                                  ),
-                                )
-                              }
-                              className="text-zinc-300 hover:text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      {/* USER PROFILE CARD */}
-                      <div className="mt-8 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-md shadow-amber-500/20">
-                            {(user?.displayName ||
-                              user?.email ||
-                              "?")[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-black truncate text-zinc-800 dark:text-zinc-100">
-                              {user?.displayName || "Reader"}
-                            </p>
-                            <p className="text-[10px] text-zinc-400 truncate">
-                              {user?.email}
-                            </p>
-                          </div>
-                          <div
-                            className="w-2 h-2 rounded-full bg-green-500 shrink-0"
-                            title="Signed in"
-                          />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black truncate text-zinc-800 dark:text-zinc-100">
+                            {user?.displayName || "Reader"}
+                          </p>
+                          <p className="text-[10px] text-zinc-400 truncate">
+                            {user?.email}
+                          </p>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-                          <span className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase flex items-center gap-1">
-                            <Check size={11} /> Synced
-                          </span>
-                          <button
-                            onClick={() => signOut(auth)}
-                            className="text-[10px] font-black uppercase text-zinc-400 hover:text-red-500 transition-colors flex items-center gap-1"
-                          >
-                            <LogOut size={12} /> Sign Out
-                          </button>
-                        </div>
+                        <div
+                          className="w-2 h-2 rounded-full bg-green-500 shrink-0"
+                          title="Signed in"
+                        />
                       </div>
-                    </>
+                      <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+                        <span className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase flex items-center gap-1">
+                          <Check size={11} /> Synced
+                        </span>
+                        <button
+                          onClick={() => signOut(auth)}
+                          className="text-[10px] font-black uppercase text-zinc-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                        >
+                          <LogOut size={12} /> Sign Out
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

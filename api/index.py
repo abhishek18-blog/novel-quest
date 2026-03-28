@@ -12,7 +12,6 @@ load_dotenv(find_dotenv())
 app = Flask(__name__)
 CORS(app)
 
-GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
 
 @app.route('/api/parse_pdf', methods=['POST'])
 def parse_pdf():
@@ -36,6 +35,8 @@ def parse_pdf():
 
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
+    load_dotenv(find_dotenv(), override=True)
+    GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
     if not GROQ_KEY:
         return jsonify({"error": "GROQ_API_KEY missing"}), 500
 
@@ -94,6 +95,68 @@ def chat_with_ai():
         answer = answer.replace("**", "")
 
         return jsonify({"answer": answer, "thought": thought})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/ocr', methods=['POST'])
+def process_ocr():
+    load_dotenv(find_dotenv(), override=True)
+    GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
+    if not GROQ_KEY:
+        return jsonify({"error": "GROQ_API_KEY missing"}), 500
+
+    try:
+        data = request.get_json(silent=True) or {}
+        images = data.get('images', [])
+        
+        if not images:
+            return jsonify({"error": "No images provided"}), 400
+
+        full_extracted_text = ""
+
+        for img in images:
+            base64_data = img.get('base64')
+            mime_type = img.get('mimeType', 'image/jpeg')
+            
+            payload = {
+                "model": "llama-3.2-11b-vision-preview",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "You are a professional OCR engine. Please extract and transcribe all the visible text from this image faithfully. If the image contains a story, keep the narrative flow intact. Return ONLY the transcribed text without any conversational filler or introductory remarks."},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}}
+                        ]
+                    }
+                ],
+                "temperature": 0.1,
+                "stream": False
+            }
+
+            response = requests.post(
+                url="https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=30
+            )
+
+            result = response.json()
+            if response.status_code != 200:
+                print(f"Groq OCR Error: {result}")
+                continue
+                
+            if 'choices' in result and len(result['choices']) > 0:
+                extracted = result['choices'][0]['message']['content']
+                full_extracted_text += extracted + "\n\n"
+
+        if not full_extracted_text.strip():
+            return jsonify({"error": "Failed to extract text from images"}), 500
+
+        return jsonify({"text": full_extracted_text.strip()})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
