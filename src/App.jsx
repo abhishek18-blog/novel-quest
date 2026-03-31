@@ -211,11 +211,11 @@ const GENRE_STYLES = {
     meta: "text-rose-500 dark:text-rose-300",
   },
   drama: {
-    active: "border-amber-300 bg-[#fff6e8] dark:bg-amber-900/20",
+    active: "border-violet-300 bg-[#f5efff] dark:bg-violet-900/20",
     inactive:
-      "border-[#ffe4b5] dark:border-[#3a4264] hover:border-amber-300 bg-[#fffbf4] dark:bg-[#262b43]",
-    title: "text-amber-700 dark:text-amber-200",
-    meta: "text-amber-500 dark:text-amber-300",
+      "border-[#e4d5ff] dark:border-[#3a4264] hover:border-violet-300 bg-[#fbf8ff] dark:bg-[#262b43]",
+    title: "text-violet-700 dark:text-violet-200",
+    meta: "text-violet-500 dark:text-violet-300",
   },
   comedy: {
     active: "border-lime-300 bg-[#f7ffe8] dark:bg-lime-900/20",
@@ -225,11 +225,11 @@ const GENRE_STYLES = {
     meta: "text-lime-500 dark:text-lime-300",
   },
   historical: {
-    active: "border-orange-300 bg-[#fff3eb] dark:bg-orange-900/20",
+    active: "border-purple-300 bg-[#f7efff] dark:bg-purple-900/20",
     inactive:
-      "border-[#ffdcbf] dark:border-[#3a4264] hover:border-orange-300 bg-[#fffaf5] dark:bg-[#262b43]",
-    title: "text-orange-700 dark:text-orange-200",
-    meta: "text-orange-500 dark:text-orange-300",
+      "border-[#ead7ff] dark:border-[#3a4264] hover:border-purple-300 bg-[#fcf8ff] dark:bg-[#262b43]",
+    title: "text-purple-700 dark:text-purple-200",
+    meta: "text-purple-500 dark:text-purple-300",
   },
 };
 
@@ -492,7 +492,7 @@ export default function App() {
         result.push(
           <span
             key={highlight.id}
-            className={`${highlightClass} px-1 rounded cursor-pointer transition-all hover:ring-2 hover:ring-amber-400`}
+            className={`${highlightClass} px-1 rounded cursor-pointer transition-all hover:ring-2 hover:ring-violet-400`}
             title={highlight.note || highlight.text}
           >
             {pageContent.slice(highlight.startOffset, highlight.endOffset)}
@@ -1255,7 +1255,7 @@ export default function App() {
     return (
       <div className="h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="animate-spin text-amber-500" size={32} />
+          <Loader2 className="animate-spin text-violet-500" size={32} />
           <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
             Syncing Novel Quest
           </span>
@@ -1284,13 +1284,13 @@ export default function App() {
       {/* MOBILE HEADER */}
       <header className="md:hidden sticky top-0 bg-[#f7f9ff]/90 dark:bg-[#202338]/90 backdrop-blur-md border-b border-[#dfe7ff] dark:border-[#313552] z-40 px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-2 overflow-hidden max-w-[60%]">
-          <BookOpen size={16} className="text-amber-500 shrink-0" />
+          <BookOpen size={16} className="text-violet-500 shrink-0" />
           <h1 className="text-xs font-black uppercase tracking-widest truncate">
             {currentDocName}
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-black text-amber-500">
+          <span className="text-[10px] font-black text-violet-500">
             {readProgress}%
           </span>
           <button
@@ -1301,7 +1301,7 @@ export default function App() {
           </button>
         </div>
         <div
-          className="absolute bottom-0 left-0 h-[2.5px] bg-amber-500 transition-all duration-700 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+          className="absolute bottom-0 left-0 h-[2.5px] bg-violet-500 transition-all duration-700 shadow-[0_0_10px_rgba(139,92,246,0.45)]"
           style={{ width: `${readProgress}%` }}
         />
       </header>
@@ -1325,7 +1325,7 @@ export default function App() {
           <div className="mt-auto flex flex-col gap-4">
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              className="p-3 text-zinc-400 hover:text-amber-500 transition-colors"
+              className="p-3 text-zinc-400 hover:text-violet-500 transition-colors"
             >
               {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
             </button>
@@ -1400,7 +1400,7 @@ export default function App() {
                 <div className="space-y-6">
                   {!user || user.isAnonymous ? (
                     <div className="space-y-4 py-8 text-center">
-                      <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto text-amber-500 mb-2">
+                      <div className="w-16 h-16 bg-sky-50 dark:bg-sky-900/20 rounded-full flex items-center justify-center mx-auto text-sky-500 mb-2">
                         <User size={32} />
                       </div>
                       <p className="text-sm text-zinc-500 px-4">
@@ -1409,7 +1409,7 @@ export default function App() {
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isSigningIn}
-                        className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg transition-transform flex items-center justify-center gap-2"
+                        className="w-full py-4 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg shadow-sky-500/25 transition-transform flex items-center justify-center gap-2"
                       >
                         {isSigningIn ? (
                           <Loader2 className="animate-spin" size={16} />
@@ -1433,7 +1433,7 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => openAuthModal("signup")}
-                        className="w-full py-3 text-[10px] font-black uppercase text-amber-600 border border-amber-200 rounded-xl"
+                        className="w-full py-3 text-[10px] font-black uppercase text-sky-600 border border-sky-200 rounded-xl hover:bg-sky-50 dark:hover:bg-sky-900/10 transition-colors"
                       >
                         Create New Account
                       </button>
@@ -1494,10 +1494,10 @@ export default function App() {
                       {/* UPLOAD OPTIONS */}
                       <div className="grid grid-cols-2 gap-3">
                         {/* PDF Upload */}
-                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-amber-500 cursor-pointer transition-all group">
+                        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl hover:border-violet-500 cursor-pointer transition-all group">
                           <FileUp
                             size={26}
-                            className="text-zinc-300 group-hover:text-amber-500 mb-2 transition-colors"
+                            className="text-zinc-300 group-hover:text-violet-500 mb-2 transition-colors"
                           />
                           <span className="text-[9px] font-black uppercase text-zinc-500 text-center">
                             Upload PDF
@@ -1606,7 +1606,7 @@ export default function App() {
                         {selectedGenreFilter && (
                           <button
                             onClick={() => setSelectedGenreFilter(null)}
-                            className="text-[9px] font-black uppercase tracking-wide text-amber-600 hover:text-amber-700"
+                            className="text-[9px] font-black uppercase tracking-wide text-violet-600 hover:text-violet-700"
                           >
                             Show all books
                           </button>
@@ -1706,7 +1706,7 @@ export default function App() {
                       </select>
                       <button
                         onClick={handleTranslate}
-                        className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase shadow-md"
+                        className="px-4 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl text-[10px] font-black uppercase shadow-md shadow-violet-500/20"
                       >
                         Translate
                       </button>
@@ -1715,9 +1715,9 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => handleInsight("summary")}
-                      className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-2xl flex flex-col items-center gap-2 border border-amber-100"
+                      className="p-4 bg-violet-50 dark:bg-violet-900/20 rounded-2xl flex flex-col items-center gap-2 border border-violet-100"
                     >
-                      <BrainCircuit size={24} className="text-amber-500" />
+                      <BrainCircuit size={24} className="text-violet-500" />
                       <span className="text-[9px] font-black uppercase">
                         Summary
                       </span>
@@ -1757,7 +1757,7 @@ export default function App() {
                           ]);
                           setActiveTab("chat");
                         }}
-                        className="mt-4 w-full py-2.5 text-[9px] font-black uppercase text-amber-600 border border-amber-200 rounded-xl"
+                        className="mt-4 w-full py-2.5 text-[9px] font-black uppercase text-violet-600 border border-violet-200 rounded-xl"
                       >
                         Add to Chat
                       </button>
@@ -1765,7 +1765,7 @@ export default function App() {
                   )}
                   {isAiLoading && (
                     <div className="py-20 text-center">
-                      <Loader2 className="animate-spin text-amber-500 mx-auto mb-2" />
+                      <Loader2 className="animate-spin text-violet-500 mx-auto mb-2" />
                       <p className="text-[10px] font-black text-zinc-400 uppercase">
                         Consulting AI...
                       </p>
@@ -1782,7 +1782,7 @@ export default function App() {
                         size={14}
                         className={
                           chatMode === "strict"
-                            ? "text-amber-500"
+                            ? "text-violet-500"
                             : "text-zinc-400"
                         }
                       />
@@ -1796,7 +1796,7 @@ export default function App() {
                           m === "strict" ? "global" : "strict",
                         )
                       }
-                      className="text-[9px] font-black uppercase bg-amber-500 text-white px-3 py-1 rounded-lg shadow-sm active:scale-95 transition-transform"
+                      className="text-[9px] font-black uppercase bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-3 py-1 rounded-lg shadow-sm shadow-violet-500/20 active:scale-95 transition-transform"
                     >
                       Switch to {chatMode === "strict" ? "Global" : "Strict"}
                     </button>
@@ -1831,13 +1831,13 @@ export default function App() {
                         <div
                           className={`max-w-[90%] p-4 rounded-[1.5rem] text-sm leading-relaxed ${
                             m.role === "user"
-                              ? "bg-amber-500 text-white rounded-tr-none shadow-lg"
+                              ? "bg-violet-500 text-white rounded-tr-none shadow-lg"
                               : "bg-[linear-gradient(135deg,_#f7faff_0%,_#eef3ff_100%)] dark:bg-[linear-gradient(135deg,_#252942_0%,_#2c3150_100%)] rounded-tl-none border border-[#dbe5ff] dark:border-[#3a4264] shadow-sm text-[#40507d] dark:text-[#e6eaff]"
                           }`}
                         >
                           {m.content}
                           {m.isStreaming && (
-                            <span className="inline-block w-2 h-4 ml-1 bg-amber-500 animate-pulse rounded-sm" />
+                            <span className="inline-block w-2 h-4 ml-1 bg-violet-500 animate-pulse rounded-sm" />
                           )}
                         </div>
                       </div>
@@ -1851,12 +1851,12 @@ export default function App() {
                         onChange={(e) => setUserInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleChat()}
                         placeholder="Ask AI scholarly questions..."
-                        className="w-full p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl text-sm focus:ring-2 focus:ring-amber-500 outline-none shadow-inner"
+                        className="w-full p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl text-sm focus:ring-2 focus:ring-violet-500 outline-none shadow-inner"
                       />
                       <button
                         onClick={handleChat}
                         disabled={isAiLoading || !userInput.trim()}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-amber-500 text-white rounded-xl shadow-lg active:scale-90 transition-all"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-violet-500 text-white rounded-xl shadow-lg shadow-violet-500/20 active:scale-90 transition-all"
                       >
                         {isAiLoading ? (
                           <Loader2 size={18} className="animate-spin" />
@@ -1875,7 +1875,7 @@ export default function App() {
                     <button
                       key={i}
                       onClick={() => scrollToPage(i)}
-                      className={`aspect-square rounded-2xl border-2 flex items-center justify-center text-xs font-black transition-all ${currentPage === i ? "bg-amber-500 text-white border-amber-500 shadow-xl scale-110" : "border-zinc-100 dark:border-zinc-800"}`}
+                      className={`aspect-square rounded-2xl border-2 flex items-center justify-center text-xs font-black transition-all ${currentPage === i ? "bg-violet-500 text-white border-violet-500 shadow-xl scale-110" : "border-zinc-100 dark:border-zinc-800"}`}
                     >
                       {i + 1}
                     </button>
@@ -1887,7 +1887,7 @@ export default function App() {
                 <div className="flex flex-col h-full space-y-4">
                   <button
                     onClick={() => setShowBookmarkModal(true)}
-                    className="w-full py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg active:scale-95"
+                    className="w-full py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg shadow-violet-500/20 active:scale-95"
                   >
                     + Add Bookmark
                   </button>
@@ -1914,7 +1914,7 @@ export default function App() {
                           </button>
                           <button
                             onClick={createBookmark}
-                            className="flex-1 py-2 bg-amber-500 text-white rounded-xl text-xs font-black"
+                            className="flex-1 py-2 bg-violet-500 text-white rounded-xl text-xs font-black"
                           >
                             Save
                           </button>
@@ -1941,7 +1941,7 @@ export default function App() {
                           className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-900"
                         >
                           <div className="flex justify-between items-start mb-1">
-                            <span className="text-[10px] font-black text-amber-600">
+                            <span className="text-[10px] font-black text-violet-600">
                               Page {b.pageIndex + 1}
                             </span>
                             <button
@@ -1983,7 +1983,7 @@ export default function App() {
 
                   <button
                     onClick={createHighlight}
-                    className="w-full py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg active:scale-95"
+                    className="w-full py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg shadow-violet-500/20 active:scale-95"
                   >
                     Select & Highlight
                   </button>
@@ -2014,7 +2014,7 @@ export default function App() {
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1">
-                            <span className="text-[10px] font-black text-amber-600">
+                            <span className="text-[10px] font-black text-violet-600">
                               Page {h.pageIndex + 1}
                             </span>
                             <button
@@ -2096,7 +2096,7 @@ export default function App() {
 
             {/* Header */}
             <div className="mb-6">
-              <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-amber-500/20">
+              <div className="w-12 h-12 bg-gradient-to-br from-sky-400 to-indigo-500 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-sky-500/20">
                 <BookOpen size={22} className="text-white" />
               </div>
               <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-100">
@@ -2129,7 +2129,7 @@ export default function App() {
                     placeholder="Full Name"
                     value={authFullName}
                     onChange={(e) => setAuthFullName(e.target.value)}
-                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
               )}
@@ -2149,7 +2149,7 @@ export default function App() {
                         e.target.value.toLowerCase().replace(/\s/g, ""),
                       )
                     }
-                    className="w-full pl-8 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full pl-8 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
               )}
@@ -2165,7 +2165,7 @@ export default function App() {
                   placeholder="Email address"
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 
@@ -2182,7 +2182,7 @@ export default function App() {
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
-                    className="w-full pl-9 pr-10 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full pl-9 pr-10 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
                   />
                   <button
                     onClick={() => setShowPassword((p) => !p)}
@@ -2206,7 +2206,7 @@ export default function App() {
                     value={authConfirmPassword}
                     onChange={(e) => setAuthConfirmPassword(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
-                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full pl-9 pr-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
               )}
@@ -2234,7 +2234,7 @@ export default function App() {
             <button
               onClick={handleAuthSubmit}
               disabled={isAuthSubmitting}
-              className="mt-4 w-full py-3.5 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              className="mt-4 w-full py-3.5 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2 active:scale-95 transition-transform"
             >
               {isAuthSubmitting ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -2256,7 +2256,7 @@ export default function App() {
                       setAuthError("");
                       setAuthSuccess("");
                     }}
-                    className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
+                    className="text-[11px] text-zinc-400 hover:text-sky-500 transition-colors"
                   >
                     Forgot password?
                   </button>
@@ -2266,7 +2266,7 @@ export default function App() {
                       setAuthError("");
                       setAuthSuccess("");
                     }}
-                    className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
+                    className="text-[11px] text-zinc-400 hover:text-sky-500 transition-colors"
                   >
                     Don't have an account?{" "}
                     <span className="font-black">Sign Up</span>
@@ -2280,7 +2280,7 @@ export default function App() {
                     setAuthError("");
                     setAuthSuccess("");
                   }}
-                  className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
+                  className="text-[11px] text-zinc-400 hover:text-sky-500 transition-colors"
                 >
                   Already have an account?{" "}
                   <span className="font-black">Sign In</span>
@@ -2293,7 +2293,7 @@ export default function App() {
                     setAuthError("");
                     setAuthSuccess("");
                   }}
-                  className="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors"
+                  className="text-[11px] text-zinc-400 hover:text-sky-500 transition-colors"
                 >
                   Back to Sign In
                 </button>
