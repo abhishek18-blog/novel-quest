@@ -33,6 +33,9 @@ import {
   KeyRound,
   ImagePlus,
   ScanText,
+  Bookmark,
+  Highlighter,
+  Tag,
 } from "lucide-react";
 
 // Firebase Imports
@@ -49,6 +52,7 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  deleteUser,
 } from "firebase/auth";
 import {
   getFirestore,
@@ -60,6 +64,7 @@ import {
   addDoc,
   deleteDoc,
   query,
+  runTransaction,
 } from "firebase/firestore";
 
 /**
@@ -84,6 +89,51 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+const isFirestoreConnectivityError = (error) => {
+  const code = error?.code || "";
+  const message = (error?.message || "").toLowerCase();
+
+  return (
+    code === "failed-precondition" ||
+    code === "unavailable" ||
+    code === "deadline-exceeded" ||
+    message.includes("offline") ||
+    message.includes("client is offline") ||
+    message.includes("failed to get document")
+  );
+};
+
+const getFriendlyAuthError = (error) => {
+  if (error?.message === "USERNAME_TAKEN") {
+    return "Username already taken. Try another.";
+  }
+
+  if (isFirestoreConnectivityError(error)) {
+    return "Account setup could not reach Firestore. Check your Firebase config, Firestore rules, and network, then try again.";
+  }
+
+  if (error?.code === "auth/user-not-found") {
+    return "No account found with this email.";
+  }
+  if (error?.code === "auth/wrong-password") {
+    return "Incorrect password.";
+  }
+  if (error?.code === "auth/invalid-credential") {
+    return "Incorrect email or password.";
+  }
+  if (error?.code === "auth/email-already-in-use") {
+    return "Email already in use. Try signing in.";
+  }
+  if (error?.code === "auth/invalid-email") {
+    return "Invalid email address.";
+  }
+  if (error?.code === "auth/too-many-requests") {
+    return "Too many attempts. Try again later.";
+  }
+
+  return error?.message || "Something went wrong. Please try again.";
+};
+
 const WORDS_PER_PAGE = 275;
 
 const LANGUAGES = [
@@ -96,6 +146,92 @@ const LANGUAGES = [
   { code: "de", name: "German" },
   { code: "zh", name: "Chinese" },
 ];
+
+const GENRES = [
+  { id: "adventure", name: "Adventure" },
+  { id: "thriller", name: "Thriller" },
+  { id: "romance", name: "Romance" },
+  { id: "mystery", name: "Mystery" },
+  { id: "fantasy", name: "Fantasy" },
+  { id: "scifi", name: "Sci-Fi" },
+  { id: "horror", name: "Horror" },
+  { id: "drama", name: "Drama" },
+  { id: "comedy", name: "Comedy" },
+  { id: "historical", name: "Historical" },
+];
+
+const GENRE_STYLES = {
+  adventure: {
+    active: "border-sky-300 bg-[#eaf6ff] dark:bg-sky-900/20",
+    inactive:
+      "border-[#cfe7ff] dark:border-[#3a4264] hover:border-sky-300 bg-[#f4fbff] dark:bg-[#262b43]",
+    title: "text-sky-700 dark:text-sky-200",
+    meta: "text-sky-500 dark:text-sky-300",
+  },
+  thriller: {
+    active: "border-violet-300 bg-[#f2edff] dark:bg-violet-900/20",
+    inactive:
+      "border-[#ddd6ff] dark:border-[#3a4264] hover:border-violet-300 bg-[#faf7ff] dark:bg-[#262b43]",
+    title: "text-violet-700 dark:text-violet-200",
+    meta: "text-violet-500 dark:text-violet-300",
+  },
+  romance: {
+    active: "border-pink-300 bg-[#ffedf5] dark:bg-pink-900/20",
+    inactive:
+      "border-[#ffd7e8] dark:border-[#3a4264] hover:border-pink-300 bg-[#fff7fb] dark:bg-[#262b43]",
+    title: "text-pink-700 dark:text-pink-200",
+    meta: "text-pink-500 dark:text-pink-300",
+  },
+  mystery: {
+    active: "border-indigo-300 bg-[#eef0ff] dark:bg-indigo-900/20",
+    inactive:
+      "border-[#d8deff] dark:border-[#3a4264] hover:border-indigo-300 bg-[#f8f9ff] dark:bg-[#262b43]",
+    title: "text-indigo-700 dark:text-indigo-200",
+    meta: "text-indigo-500 dark:text-indigo-300",
+  },
+  fantasy: {
+    active: "border-fuchsia-300 bg-[#fbecff] dark:bg-fuchsia-900/20",
+    inactive:
+      "border-[#f1d4ff] dark:border-[#3a4264] hover:border-fuchsia-300 bg-[#fef7ff] dark:bg-[#262b43]",
+    title: "text-fuchsia-700 dark:text-fuchsia-200",
+    meta: "text-fuchsia-500 dark:text-fuchsia-300",
+  },
+  scifi: {
+    active: "border-cyan-300 bg-[#eafcff] dark:bg-cyan-900/20",
+    inactive:
+      "border-[#ccefff] dark:border-[#3a4264] hover:border-cyan-300 bg-[#f4fdff] dark:bg-[#262b43]",
+    title: "text-cyan-700 dark:text-cyan-200",
+    meta: "text-cyan-500 dark:text-cyan-300",
+  },
+  horror: {
+    active: "border-rose-300 bg-[#fff0f3] dark:bg-rose-900/20",
+    inactive:
+      "border-[#ffd6de] dark:border-[#3a4264] hover:border-rose-300 bg-[#fff8fa] dark:bg-[#262b43]",
+    title: "text-rose-700 dark:text-rose-200",
+    meta: "text-rose-500 dark:text-rose-300",
+  },
+  drama: {
+    active: "border-amber-300 bg-[#fff6e8] dark:bg-amber-900/20",
+    inactive:
+      "border-[#ffe4b5] dark:border-[#3a4264] hover:border-amber-300 bg-[#fffbf4] dark:bg-[#262b43]",
+    title: "text-amber-700 dark:text-amber-200",
+    meta: "text-amber-500 dark:text-amber-300",
+  },
+  comedy: {
+    active: "border-lime-300 bg-[#f7ffe8] dark:bg-lime-900/20",
+    inactive:
+      "border-[#e4f7b8] dark:border-[#3a4264] hover:border-lime-300 bg-[#fbfff4] dark:bg-[#262b43]",
+    title: "text-lime-700 dark:text-lime-200",
+    meta: "text-lime-500 dark:text-lime-300",
+  },
+  historical: {
+    active: "border-orange-300 bg-[#fff3eb] dark:bg-orange-900/20",
+    inactive:
+      "border-[#ffdcbf] dark:border-[#3a4264] hover:border-orange-300 bg-[#fffaf5] dark:bg-[#262b43]",
+    title: "text-orange-700 dark:text-orange-200",
+    meta: "text-orange-500 dark:text-orange-300",
+  },
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -140,6 +276,21 @@ export default function App() {
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [ocrProgress, setOcrProgress] = useState("");
 
+  // --- BOOKMARKS, HIGHLIGHTS, TAGS STATES ---
+  const [bookmarks, setBookmarks] = useState([]);
+  const [highlights, setHighlights] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [selectedHighlightColor, setSelectedHighlightColor] =
+    useState("yellow");
+  const [bookmarkNote, setBookmarkNote] = useState("");
+  const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [bookGenres, setBookGenres] = useState({});
+  const [draggedBook, setDraggedBook] = useState(null);
+  const [newTagName, setNewTagName] = useState("");
+  const [sourceCollectionMap, setSourceCollectionMap] = useState({});
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [selectedGenreFilter, setSelectedGenreFilter] = useState(null);
+
   const isInitialLoad = useRef(true);
 
   // --- AUTH MODAL STATES ---
@@ -160,10 +311,10 @@ export default function App() {
     const root = window.document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
-      root.style.backgroundColor = "#09090b";
+      root.style.backgroundColor = "#181926";
     } else {
       root.classList.remove("dark");
-      root.style.backgroundColor = "#fafafa";
+      root.style.backgroundColor = "#f5f7ff";
     }
     localStorage.setItem("nq_theme", theme);
   }, [theme]);
@@ -245,6 +396,124 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // --- BOOKMARKS, HIGHLIGHTS, TAGS SYNC ---
+  useEffect(() => {
+    if (!user || !currentDocId) return;
+
+    const unsubscribes = [];
+
+    // Sync bookmarks - store with sourceId as a field
+    const bookmarksRef = collection(db, "users", user.uid, "bookmarks");
+    const bUnsub = onSnapshot(query(bookmarksRef), (snap) => {
+      const docs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((d) => d.sourceId === currentDocId);
+      setBookmarks(
+        docs.sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0)),
+      );
+    });
+    unsubscribes.push(bUnsub);
+
+    // Sync highlights - store with sourceId as a field
+    const highlightsRef = collection(db, "users", user.uid, "highlights");
+    const hUnsub = onSnapshot(query(highlightsRef), (snap) => {
+      const docs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((d) => d.sourceId === currentDocId);
+      setHighlights(
+        docs.sort((a, b) => (a.pageIndex || 0) - (b.pageIndex || 0)),
+      );
+    });
+    unsubscribes.push(hUnsub);
+
+    // Sync tags
+    const tagsRef = collection(db, "tags", user.uid, "collections");
+    const tUnsub = onSnapshot(tagsRef, (snap) => {
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTags(docs);
+    });
+    unsubscribes.push(tUnsub);
+
+    // Sync source-collection mapping
+    const sourceCollRef = doc(
+      db,
+      "tags",
+      user.uid,
+      "sourceCollections",
+      currentDocId,
+    );
+    const scUnsub = onSnapshot(sourceCollRef, (snap) => {
+      if (snap.exists()) {
+        setSourceCollectionMap(snap.data());
+      } else {
+        setSourceCollectionMap({});
+      }
+    });
+    unsubscribes.push(scUnsub);
+
+    return () => unsubscribes.forEach((unsub) => unsub());
+  }, [user, currentDocId]);
+
+  // --- HIGHLIGHT RENDERING ---
+  const renderHighlightedText = (pageContent, pageHighlights) => {
+    if (!pageHighlights || pageHighlights.length === 0) {
+      return pageContent;
+    }
+
+    // Handle positioned highlights (most reliable)
+    const positionedHighlights = pageHighlights.filter(
+      (h) => h.startOffset !== undefined && h.endOffset !== undefined,
+    );
+
+    if (positionedHighlights.length > 0) {
+      // Sort highlights by start position
+      const sortedHighlights = positionedHighlights.sort(
+        (a, b) => a.startOffset - b.startOffset,
+      );
+
+      const result = [];
+      let lastIndex = 0;
+
+      sortedHighlights.forEach((highlight) => {
+        // Add text before highlight
+        if (highlight.startOffset > lastIndex) {
+          result.push(pageContent.slice(lastIndex, highlight.startOffset));
+        }
+
+        // Add highlighted text with stable key based on highlight ID
+        const highlightClass =
+          {
+            yellow: "bg-yellow-200 dark:bg-yellow-800/50",
+            green: "bg-green-200 dark:bg-green-800/50",
+            pink: "bg-pink-200 dark:bg-pink-800/50",
+            blue: "bg-blue-200 dark:bg-blue-800/50",
+          }[highlight.color] || "bg-yellow-200 dark:bg-yellow-800/50";
+
+        result.push(
+          <span
+            key={highlight.id}
+            className={`${highlightClass} px-1 rounded cursor-pointer transition-all hover:ring-2 hover:ring-amber-400`}
+            title={highlight.note || highlight.text}
+          >
+            {pageContent.slice(highlight.startOffset, highlight.endOffset)}
+          </span>,
+        );
+
+        lastIndex = highlight.endOffset;
+      });
+
+      // Add remaining text
+      if (lastIndex < pageContent.length) {
+        result.push(pageContent.slice(lastIndex));
+      }
+
+      return result;
+    }
+
+    // Fallback: return content as-is if no valid positioned highlights
+    return pageContent;
+  };
+
   // --- READING ENGINE ---
   const pages = useMemo(() => {
     const words = text.split(/\s+/).filter(Boolean);
@@ -263,6 +532,38 @@ export default function App() {
     if (pages.length <= 1 || !text) return 0;
     return Math.round(((currentPage + 1) / pages.length) * 100);
   }, [currentPage, pages.length, text]);
+
+  const filteredSources = useMemo(() => {
+    if (!selectedGenreFilter) return sources;
+    return sources.filter((s) => bookGenres[s.id] === selectedGenreFilter);
+  }, [sources, bookGenres, selectedGenreFilter]);
+
+  const selectedGenreName = useMemo(() => {
+    if (!selectedGenreFilter) return "All Books";
+    return (
+      GENRES.find((genre) => genre.id === selectedGenreFilter)?.name ||
+      "Selected Genre"
+    );
+  }, [selectedGenreFilter]);
+
+  const highlightColorButtonStyles = {
+    yellow: {
+      active: "bg-yellow-500 text-white scale-105 shadow-lg",
+      inactive: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700",
+    },
+    green: {
+      active: "bg-green-500 text-white scale-105 shadow-lg",
+      inactive: "bg-green-100 dark:bg-green-900/30 text-green-700",
+    },
+    pink: {
+      active: "bg-pink-500 text-white scale-105 shadow-lg",
+      inactive: "bg-pink-100 dark:bg-pink-900/30 text-pink-700",
+    },
+    blue: {
+      active: "bg-blue-500 text-white scale-105 shadow-lg",
+      inactive: "bg-blue-100 dark:bg-blue-900/30 text-blue-700",
+    },
+  };
 
   // Progress Tracking
   useEffect(() => {
@@ -605,6 +906,183 @@ export default function App() {
     trackEvent("translation_used", { targetLang: selectedLang });
   };
 
+  // --- BOOKMARKS HANDLERS ---
+  const createBookmark = async () => {
+    if (!user || !currentDocId) return;
+    try {
+      const bookmarkRef = collection(db, "users", user.uid, "bookmarks");
+      await addDoc(bookmarkRef, {
+        sourceId: currentDocId,
+        pageIndex: currentPage,
+        note: bookmarkNote,
+        timestamp: Date.now(),
+        createdAt: Date.now(),
+      });
+      setBookmarkNote("");
+      setShowBookmarkModal(false);
+      notify("Bookmark added!", "success");
+      trackEvent("bookmark_created", { page: currentPage });
+    } catch (err) {
+      console.error("Error creating bookmark:", err);
+      notify("Failed to create bookmark", "error");
+    }
+  };
+
+  const deleteBookmark = async (bookmarkId) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "bookmarks", bookmarkId));
+      notify("Bookmark deleted!", "success");
+    } catch (err) {
+      console.error("Error deleting bookmark:", err);
+    }
+  };
+
+  // --- HIGHLIGHTS HANDLERS ---
+  const createHighlight = async () => {
+    if (!user || !currentDocId) return;
+    const selection = window.getSelection();
+    const selectedText = selection.toString().trim();
+    if (!selectedText) {
+      notify("Select text to highlight", "info");
+      return;
+    }
+
+    try {
+      // Find the correct page by checking which page element contains the selection
+      let selectedPageIndex = currentPage;
+      const range = selection.getRangeAt(0);
+      let node = range.commonAncestorContainer;
+
+      // Traverse up to find the article element with data-page-index
+      while (node && node.nodeType !== 9) {
+        if (
+          node.getAttribute &&
+          node.getAttribute("data-page-index") !== null
+        ) {
+          selectedPageIndex = parseInt(node.getAttribute("data-page-index"));
+          break;
+        }
+        node = node.parentNode;
+      }
+
+      // Get the page content element
+      const pageElement = document.getElementById(`page-${selectedPageIndex}`);
+      const textElement = pageElement?.querySelector(".whitespace-pre-wrap");
+      if (!textElement) return;
+
+      // Get selection range relative to the page content
+      const pageRange = document.createRange();
+      pageRange.selectNodeContents(textElement);
+      pageRange.setEnd(range.startContainer, range.startOffset);
+
+      const startOffset = pageRange.toString().length;
+      const endOffset = startOffset + selectedText.length;
+
+      const highlightRef = collection(db, "users", user.uid, "highlights");
+      await addDoc(highlightRef, {
+        sourceId: currentDocId,
+        pageIndex: selectedPageIndex,
+        text: selectedText.substring(0, 500),
+        color: selectedHighlightColor,
+        startOffset: startOffset,
+        endOffset: endOffset,
+        timestamp: Date.now(),
+        note: "",
+      });
+      window.getSelection().removeAllRanges();
+      notify(`Text highlighted in ${selectedHighlightColor}!`, "success");
+      trackEvent("highlight_created", {
+        color: selectedHighlightColor,
+        page: selectedPageIndex,
+      });
+    } catch (err) {
+      console.error("Error creating highlight:", err);
+      notify("Failed to create highlight", "error");
+    }
+  };
+
+  const deleteHighlight = async (highlightId) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "highlights", highlightId));
+      notify("Highlight deleted!", "success");
+    } catch (err) {
+      console.error("Error deleting highlight:", err);
+    }
+  };
+
+  // --- TAGS/COLLECTIONS HANDLERS ---
+  const createTag = async () => {
+    if (!user || !newTagName.trim()) return;
+    try {
+      const tagsRef = collection(db, "tags", user.uid, "collections");
+      await addDoc(tagsRef, {
+        name: newTagName.trim(),
+        color: "blue",
+        description: "",
+        createdAt: Date.now(),
+      });
+      setNewTagName("");
+      notify("Collection created!", "success");
+      trackEvent("collection_created", { name: newTagName });
+    } catch (err) {
+      console.error("Error creating tag:", err);
+      notify("Failed to create collection", "error");
+    }
+  };
+
+  const deleteTag = async (tagId) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "tags", user.uid, "collections", tagId));
+      notify("Collection deleted!", "success");
+    } catch (err) {
+      console.error("Error deleting tag:", err);
+    }
+  };
+
+  const addSourceToCollection = async (collectionId) => {
+    if (!user || !currentDocId) return;
+    try {
+      const sourceCollRef = doc(
+        db,
+        "tags",
+        user.uid,
+        "sourceCollections",
+        currentDocId,
+      );
+      const current = sourceCollectionMap.collectionIds || [];
+      if (!current.includes(collectionId)) {
+        current.push(collectionId);
+      }
+      await setDoc(sourceCollRef, { collectionIds: current });
+      notify("Added to collection!", "success");
+    } catch (err) {
+      console.error("Error adding source to collection:", err);
+    }
+  };
+
+  const removeSourceFromCollection = async (collectionId) => {
+    if (!user || !currentDocId) return;
+    try {
+      const sourceCollRef = doc(
+        db,
+        "tags",
+        user.uid,
+        "sourceCollections",
+        currentDocId,
+      );
+      const current = (sourceCollectionMap.collectionIds || []).filter(
+        (id) => id !== collectionId,
+      );
+      await setDoc(sourceCollRef, { collectionIds: current });
+      notify("Removed from collection!", "success");
+    } catch (err) {
+      console.error("Error removing source from collection:", err);
+    }
+  };
+
   // --- EMAIL AUTH HANDLERS ---
   const handleAuthSubmit = async () => {
     setAuthError("");
@@ -612,15 +1090,19 @@ export default function App() {
     setIsAuthSubmitting(true);
     try {
       if (authMode === "signup") {
-        if (!authFullName.trim()) {
+        const fullName = authFullName.trim();
+        const username = authUsername.trim().toLowerCase();
+        const email = authEmail.trim();
+
+        if (!fullName) {
           setAuthError("Please enter your full name.");
           return;
         }
-        if (!authUsername.trim()) {
+        if (!username) {
           setAuthError("Please enter a username.");
           return;
         }
-        if (authUsername.includes(" ")) {
+        if (username.includes(" ")) {
           setAuthError("Username cannot have spaces.");
           return;
         }
@@ -633,47 +1115,54 @@ export default function App() {
           return;
         }
 
-        // Check if username already taken in Firestore
-        const usernameDoc = await getDoc(
-          doc(db, "usernames", authUsername.toLowerCase()),
-        );
-        if (usernameDoc.exists()) {
-          setAuthError("Username already taken. Try another.");
-          return;
-        }
-
-        // Create Firebase auth user
         const userCred = await createUserWithEmailAndPassword(
           auth,
-          authEmail,
+          email,
           authPassword,
         );
 
         // Update Firebase display name
-        await updateProfile(userCred.user, { displayName: authFullName });
+        await updateProfile(userCred.user, { displayName: fullName });
 
-        // Store user profile in Firestore
-        await setDoc(doc(db, "users", userCred.user.uid), {
-          uid: userCred.user.uid,
-          fullName: authFullName,
-          username: authUsername.toLowerCase(),
-          email: authEmail,
-          createdAt: Date.now(),
-          provider: "email",
-        });
+        try {
+          await runTransaction(db, async (transaction) => {
+            const usernameRef = doc(db, "usernames", username);
+            const userRef = doc(db, "users", userCred.user.uid);
+            const usernameDoc = await transaction.get(usernameRef);
 
-        // Reserve username
-        await setDoc(doc(db, "usernames", authUsername.toLowerCase()), {
-          uid: userCred.user.uid,
-        });
+            if (usernameDoc.exists()) {
+              throw new Error("USERNAME_TAKEN");
+            }
+
+            transaction.set(userRef, {
+              uid: userCred.user.uid,
+              fullName,
+              username,
+              email,
+              createdAt: Date.now(),
+              provider: "email",
+            });
+
+            transaction.set(usernameRef, {
+              uid: userCred.user.uid,
+            });
+          });
+        } catch (signupError) {
+          try {
+            await deleteUser(userCred.user);
+          } catch (cleanupError) {
+            console.error("Signup cleanup failed:", cleanupError);
+          }
+          throw signupError;
+        }
 
         // Auto signed-in by Firebase — just close modal
         setShowAuthModal(false);
         notify(
-          "Welcome to Novel Quest, " + authFullName.split(" ")[0] + "!",
+          "Welcome to Novel Quest, " + fullName.split(" ")[0] + "!",
           "success",
         );
-        trackEvent("signup", { method: "email", username: authUsername });
+        trackEvent("signup", { method: "email", username });
       } else if (authMode === "signin") {
         const userCred = await signInWithEmailAndPassword(
           auth,
@@ -705,21 +1194,7 @@ export default function App() {
         setAuthSuccess("Reset email sent! Check your inbox (and spam folder).");
       }
     } catch (err) {
-      const msg =
-        err.code === "auth/user-not-found"
-          ? "No account found with this email."
-          : err.code === "auth/wrong-password"
-            ? "Incorrect password."
-            : err.code === "auth/invalid-credential"
-              ? "Incorrect email or password."
-              : err.code === "auth/email-already-in-use"
-                ? "Email already in use. Try signing in."
-                : err.code === "auth/invalid-email"
-                  ? "Invalid email address."
-                  : err.code === "auth/too-many-requests"
-                    ? "Too many attempts. Try again later."
-                    : err.message;
-      setAuthError(msg);
+      setAuthError(getFriendlyAuthError(err));
     } finally {
       setIsAuthSubmitting(false);
     }
@@ -743,10 +1218,26 @@ export default function App() {
     setIsSigningIn(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Create Firestore user profile if it doesn't exist yet.
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          fullName: user.displayName || "",
+          email: user.email || "",
+          provider: "google",
+          createdAt: Date.now(),
+        });
+      }
+
       notify("Signed in with Google", "success");
       trackEvent("signin", { method: "google" });
     } catch (err) {
+      console.error("Google sign-in error:", err);
       notify("Authentication failed", "error");
     } finally {
       setIsSigningIn(false);
@@ -779,7 +1270,7 @@ export default function App() {
         setIsSidebarOpen(true);
       }}
       className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all
-        ${activeTab === id && isSidebarOpen ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-inner" : "text-zinc-400"}`}
+        ${activeTab === id && isSidebarOpen ? "text-sky-600 bg-[#eaf2ff] dark:bg-sky-900/20 shadow-inner" : "text-[#7b88b6] dark:text-[#aab4d6]"}`}
     >
       <Icon size={20} />
       <span className="text-[9px] font-black uppercase tracking-tight">
@@ -789,9 +1280,9 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] bg-[#f5f7ff] dark:bg-[#181926] text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans">
       {/* MOBILE HEADER */}
-      <header className="md:hidden sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 z-40 px-4 py-3 flex justify-between items-center">
+      <header className="md:hidden sticky top-0 bg-[#f7f9ff]/90 dark:bg-[#202338]/90 backdrop-blur-md border-b border-[#dfe7ff] dark:border-[#313552] z-40 px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-2 overflow-hidden max-w-[60%]">
           <BookOpen size={16} className="text-amber-500 shrink-0" />
           <h1 className="text-xs font-black uppercase tracking-widest truncate">
@@ -816,8 +1307,8 @@ export default function App() {
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
-        <nav className="hidden md:flex w-20 border-r border-zinc-200 dark:border-zinc-800 flex-col items-center py-8 gap-8 bg-white dark:bg-zinc-900 z-50">
-          <div className="p-3 bg-amber-500 rounded-2xl text-white shadow-lg shadow-amber-500/20 transition-transform hover:scale-105">
+        <nav className="hidden md:flex w-20 border-r border-[#dfe7ff] dark:border-[#313552] flex-col items-center py-8 gap-8 bg-[#f7f9ff] dark:bg-[#202338] z-50 shadow-[8px_0_30px_rgba(86,119,214,0.08)] dark:shadow-none">
+          <div className="p-3 bg-gradient-to-br from-sky-400 to-indigo-500 rounded-2xl text-white shadow-lg shadow-sky-500/25 transition-transform hover:scale-105">
             <BookOpen size={24} />
           </div>
           <div className="relative">
@@ -829,6 +1320,8 @@ export default function App() {
           <NavItem id="insights" icon={Sparkles} label="Magic" />
           <NavItem id="chat" icon={MessageSquare} label="Chat" />
           <NavItem id="navigator" icon={Layers} label="Pages" />
+          <NavItem id="bookmarks" icon={Bookmark} label="Bookmarks" />
+          <NavItem id="highlights" icon={Highlighter} label="Highlights" />
           <div className="mt-auto flex flex-col gap-4">
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -845,14 +1338,14 @@ export default function App() {
           </div>
         </nav>
 
-        <main className="flex-1 overflow-y-auto px-4 md:px-20 py-8 scroll-smooth relative custom-scrollbar bg-zinc-50 dark:bg-zinc-950">
+        <main className="flex-1 overflow-y-auto px-4 md:px-20 py-8 scroll-smooth relative custom-scrollbar bg-[radial-gradient(circle_at_top,_rgba(240,246,255,1),_rgba(245,247,255,1)_42%,_rgba(238,243,255,1)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(47,53,88,0.6),_rgba(24,25,38,1)_42%,_rgba(20,22,34,1)_100%)]">
           <div className="max-w-3xl mx-auto">
-            <div className="hidden md:flex justify-between items-end border-b border-zinc-200 dark:border-zinc-800 pb-6 mb-12">
-              <div className="max-w-[70%]">
-                <h1 className="text-3xl font-serif font-bold text-zinc-800 dark:text-zinc-100">
+            <div className="hidden md:flex justify-between items-end border-b border-[#d8e2ff] dark:border-[#313552] pb-6 mb-12">
+              <div className="flex-1">
+                <h1 className="text-3xl font-serif font-bold text-[#2b3968] dark:text-[#eef2ff]">
                   {currentDocName}
                 </h1>
-                <p className="text-[10px] uppercase font-black tracking-widest text-zinc-400 mt-2">
+                <p className="text-[10px] uppercase font-black tracking-widest text-[#7b88b6] dark:text-[#aab4d6] mt-2">
                   Progress: Page {currentPage + 1} of {pages.length} (
                   {readProgress}%)
                 </p>
@@ -860,21 +1353,27 @@ export default function App() {
             </div>
 
             <div className="space-y-12 pb-32">
-              {pages.map((p, i) => (
-                <article
-                  key={i}
-                  id={`page-${i}`}
-                  data-page-index={i}
-                  className="bg-white dark:bg-zinc-900 p-8 md:p-16 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 shadow-sm transition-all hover:shadow-md relative group selection:bg-amber-100 dark:selection:bg-amber-900/50"
-                >
-                  <span className="absolute top-6 right-8 text-[10px] font-black text-zinc-200 dark:text-zinc-800 uppercase tracking-widest transition-colors group-hover:text-amber-500">
-                    Page {i + 1}
-                  </span>
-                  <div className="font-serif text-lg md:text-xl leading-relaxed text-zinc-800 dark:text-zinc-300 whitespace-pre-wrap select-text">
-                    {p}
-                  </div>
-                </article>
-              ))}
+              {pages.map((p, i) => {
+                // Get highlights for this page
+                const pageHighlights = highlights.filter(
+                  (h) => h.pageIndex === i,
+                );
+                return (
+                  <article
+                    key={i}
+                    id={`page-${i}`}
+                    data-page-index={i}
+                    className="bg-[#fcfdff] dark:bg-[#21253a] p-8 md:p-16 rounded-[2rem] border border-[#dfe7ff] dark:border-[#353a58] shadow-[0_20px_45px_rgba(100,126,214,0.08)] dark:shadow-[0_18px_40px_rgba(0,0,0,0.28)] transition-all hover:shadow-[0_24px_52px_rgba(100,126,214,0.14)] relative group selection:bg-sky-100 dark:selection:bg-sky-900/40"
+                  >
+                    <span className="absolute top-6 right-8 text-[10px] font-black text-[#d5def7] dark:text-[#49507a] uppercase tracking-widest transition-colors group-hover:text-sky-500">
+                      Page {i + 1}
+                    </span>
+                    <div className="font-serif text-lg md:text-xl leading-relaxed text-[#334155] dark:text-[#e6eaff] whitespace-pre-wrap select-text">
+                      {renderHighlightedText(p, pageHighlights)}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </main>
@@ -883,14 +1382,14 @@ export default function App() {
           className={`fixed inset-0 md:relative md:inset-auto z-[100] md:z-auto transition-all duration-300 overflow-hidden flex
           ${isSidebarOpen ? "w-full md:w-[420px]" : "w-0"}`}
         >
-          <div className="flex-1 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col shadow-2xl md:shadow-none h-full">
-            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-950/20">
-              <h2 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+          <div className="flex-1 bg-[#f7f9ff] dark:bg-[#202338] border-l border-[#dfe7ff] dark:border-[#313552] flex flex-col shadow-2xl md:shadow-none h-full">
+            <div className="p-4 border-b border-[#e8eeff] dark:border-[#313552] flex justify-between items-center bg-[#f4f7ff]/80 dark:bg-[#1b1e31]/70">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-[#7b88b6] dark:text-[#aab4d6]">
                 {activeTab}
               </h2>
               <button
                 onClick={() => setIsSidebarOpen(false)}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                className="p-2 hover:bg-[#eaf0ff] dark:hover:bg-[#2b2f49] rounded-xl transition-colors"
               >
                 <X size={20} />
               </button>
@@ -941,6 +1440,57 @@ export default function App() {
                     </div>
                   ) : (
                     <>
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowProfileMenu((prev) => !prev)}
+                          className="w-full rounded-3xl border border-[#dfe7ff] dark:border-[#353a58] bg-[#fcfdff] dark:bg-[#252942] p-4 text-left shadow-[0_12px_30px_rgba(100,126,214,0.08)] transition-all hover:border-sky-300 hover:shadow-md"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-indigo-500 text-sm font-black text-white shadow-lg shadow-sky-500/25 shrink-0">
+                              {(user?.displayName || user?.email || "?")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] font-black uppercase tracking-wide text-[#31406f] dark:text-[#eef2ff]">
+                                {user?.displayName || "Reader"}
+                              </p>
+                              <p className="mt-1 truncate text-[10px] text-[#7b88b6] dark:text-[#aab4d6]">
+                                {user?.email}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-green-700 dark:text-green-400">
+                                <Check size={10} /> Synced
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+
+                        {showProfileMenu && (
+                          <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 rounded-2xl border border-[#dfe7ff] dark:border-[#353a58] bg-[#fcfdff] dark:bg-[#252942] p-2 shadow-xl">
+                            <button
+                              onClick={async () => {
+                                setShowProfileMenu(false);
+                                await handleGoogleSignIn();
+                              }}
+                              className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-wide text-[#56658f] dark:text-[#e6eaff] hover:bg-[#eef4ff] dark:hover:bg-[#2d3150]"
+                            >
+                              <LogIn size={14} />
+                              Add another account
+                            </button>
+                            <button
+                              onClick={async () => {
+                                setShowProfileMenu(false);
+                                await signOut(auth);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-wide text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            >
+                              <LogOut size={14} />
+                              Sign out
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {/* UPLOAD OPTIONS */}
                       <div className="grid grid-cols-2 gap-3">
                         {/* PDF Upload */}
@@ -1000,90 +1550,137 @@ export default function App() {
                           />
                         </div>
                       )}
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
-                          Collections
+                          Organize by Genre
                         </h3>
-                        {sources.map((s) => (
-                          <div
-                            key={s.id}
-                            className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${currentDocId === s.id ? "border-amber-500 bg-amber-50 dark:bg-amber-900/10" : "border-zinc-100 dark:hover:bg-zinc-800"}`}
-                          >
-                            <button
-                              onClick={() => {
-                                setText(s.content);
-                                setCurrentDocName(s.name);
-                                setCurrentDocId(s.id);
-                                setIsSidebarOpen(false);
-                                isInitialLoad.current = true;
-                                trackEvent("book_open", {
-                                  bookName: s.name,
-                                  bookId: s.id,
-                                });
-                              }}
-                              className="flex-1 text-left min-w-0"
-                            >
-                              <p className="text-xs font-bold truncate">
-                                {s.name}
-                              </p>
-                              <p className="text-[10px] text-zinc-400 mt-1">
-                                {s.date}
-                              </p>
-                            </button>
-                            <button
-                              onClick={() =>
-                                deleteDoc(
-                                  doc(
-                                    db,
-                                    "artifacts",
-                                    appId,
-                                    "users",
-                                    user.uid,
-                                    "sources",
-                                    s.id,
-                                  ),
-                                )
-                              }
-                              className="text-zinc-300 hover:text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      {/* USER PROFILE CARD */}
-                      <div className="mt-8 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-md shadow-amber-500/20">
-                            {(user?.displayName ||
-                              user?.email ||
-                              "?")[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-black truncate text-zinc-800 dark:text-zinc-100">
-                              {user?.displayName || "Reader"}
-                            </p>
-                            <p className="text-[10px] text-zinc-400 truncate">
-                              {user?.email}
-                            </p>
-                          </div>
-                          <div
-                            className="w-2 h-2 rounded-full bg-green-500 shrink-0"
-                            title="Signed in"
-                          />
+                        <div className="grid grid-cols-2 gap-2">
+                          {GENRES.map((genre) => {
+                            const booksInGenre = sources.filter(
+                              (s) => bookGenres[s.id] === genre.id,
+                            ).length;
+                            const isSelectedGenre =
+                              selectedGenreFilter === genre.id;
+                            const genreStyles =
+                              GENRE_STYLES[genre.id] || GENRE_STYLES.adventure;
+                            return (
+                              <div
+                                key={genre.id}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  if (draggedBook) {
+                                    setBookGenres((prev) => ({
+                                      ...prev,
+                                      [draggedBook]: genre.id,
+                                    }));
+                                    setDraggedBook(null);
+                                  }
+                                }}
+                                onClick={() => setSelectedGenreFilter(genre.id)}
+                                className={`p-3 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${
+                                  isSelectedGenre
+                                    ? genreStyles.active
+                                    : genreStyles.inactive
+                                }`}
+                              >
+                                <p
+                                  className={`text-[10px] font-black uppercase ${genreStyles.title}`}
+                                >
+                                  {genre.name}
+                                </p>
+                                <p
+                                  className={`text-[8px] mt-1 ${genreStyles.meta}`}
+                                >
+                                  {booksInGenre}{" "}
+                                  {booksInGenre === 1 ? "book" : "books"}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-                          <span className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase flex items-center gap-1">
-                            <Check size={11} /> Synced
-                          </span>
+
+                        <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mt-6">
+                          {selectedGenreName}
+                        </h3>
+                        {selectedGenreFilter && (
                           <button
-                            onClick={() => signOut(auth)}
-                            className="text-[10px] font-black uppercase text-zinc-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                            onClick={() => setSelectedGenreFilter(null)}
+                            className="text-[9px] font-black uppercase tracking-wide text-amber-600 hover:text-amber-700"
                           >
-                            <LogOut size={12} /> Sign Out
+                            Show all books
                           </button>
+                        )}
+                        <div className="space-y-2">
+                          {filteredSources.length === 0 ? (
+                            <p className="text-[9px] text-zinc-400 text-center py-4">
+                              {selectedGenreFilter
+                                ? `No books in ${selectedGenreName} yet`
+                                : "Upload a book to get started"}
+                            </p>
+                          ) : (
+                            filteredSources.map((s) => (
+                              <div
+                                key={s.id}
+                                draggable
+                                onDragStart={() => setDraggedBook(s.id)}
+                                onDragEnd={() => setDraggedBook(null)}
+                                className={`p-3 rounded-xl border-2 flex items-center gap-3 transition-all cursor-move ${
+                                  currentDocId === s.id
+                                    ? "border-sky-400 bg-[#eef5ff] dark:bg-sky-900/20 shadow-[0_10px_24px_rgba(100,126,214,0.12)]"
+                                    : draggedBook === s.id
+                                      ? "border-sky-300 bg-[#e4efff] dark:bg-sky-900/25 opacity-50"
+                                      : "border-[#d7e3ff] dark:border-[#3a4264] bg-[#f9fbff] dark:bg-[#252942] hover:border-sky-300"
+                                }`}
+                              >
+                                <button
+                                  onClick={() => {
+                                    setText(s.content);
+                                    setCurrentDocName(s.name);
+                                    setCurrentDocId(s.id);
+                                    setIsSidebarOpen(false);
+                                    isInitialLoad.current = true;
+                                    trackEvent("book_open", {
+                                      bookName: s.name,
+                                      bookId: s.id,
+                                    });
+                                  }}
+                                  className="flex-1 text-left min-w-0"
+                                >
+                                  <p className="text-xs font-bold truncate text-[#31406f] dark:text-[#eef2ff]">
+                                    {s.name}
+                                  </p>
+                                  <p className="text-[8px] text-[#8a97bf] dark:text-[#aab4d6] mt-0.5">
+                                    {bookGenres[s.id]
+                                      ? GENRES.find(
+                                          (g) => g.id === bookGenres[s.id],
+                                        )?.name
+                                      : "Unorganized"}
+                                  </p>
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    deleteDoc(
+                                      doc(
+                                        db,
+                                        "artifacts",
+                                        appId,
+                                        "users",
+                                        user.uid,
+                                        "sources",
+                                        s.id,
+                                      ),
+                                    )
+                                  }
+                                  className="text-zinc-300 hover:text-red-500 shrink-0"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))
+                          )}
                         </div>
-                      </div>
+                        </div>
                     </>
                   )}
                 </div>
@@ -1222,11 +1819,11 @@ export default function App() {
                       >
                         {m.role === "bot" && m.thought && (
                           <details className="max-w-[85%] group">
-                            <summary className="text-[10px] font-black uppercase text-zinc-400 cursor-pointer hover:text-amber-500 flex items-center gap-2 list-none bg-zinc-50 dark:bg-zinc-800/30 px-3 py-1 rounded-full border border-zinc-100 dark:border-zinc-800 transition-all">
+                            <summary className="text-[10px] font-black uppercase text-[#8190bc] cursor-pointer hover:text-sky-500 flex items-center gap-2 list-none bg-[#f7faff] dark:bg-[#262b43] px-3 py-1 rounded-full border border-[#dbe5ff] dark:border-[#3a4264] transition-all">
                               <BrainCircuit size={12} />
                               <span>AI Logic Process</span>
                             </summary>
-                            <div className="mt-2 p-4 bg-amber-50/30 dark:bg-amber-900/10 border-l-2 border-amber-500 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400 font-serif italic rounded-r-2xl">
+                            <div className="mt-2 p-4 bg-[#eef4ff] dark:bg-[#232845] border-l-2 border-sky-400 text-[11px] leading-relaxed text-[#64739d] dark:text-[#b9c4e8] font-serif italic rounded-r-2xl">
                               {m.thought}
                             </div>
                           </details>
@@ -1235,7 +1832,7 @@ export default function App() {
                           className={`max-w-[90%] p-4 rounded-[1.5rem] text-sm leading-relaxed ${
                             m.role === "user"
                               ? "bg-amber-500 text-white rounded-tr-none shadow-lg"
-                              : "bg-white dark:bg-zinc-900 rounded-tl-none border border-zinc-200 dark:border-zinc-800 shadow-sm"
+                              : "bg-[linear-gradient(135deg,_#f7faff_0%,_#eef3ff_100%)] dark:bg-[linear-gradient(135deg,_#252942_0%,_#2c3150_100%)] rounded-tl-none border border-[#dbe5ff] dark:border-[#3a4264] shadow-sm text-[#40507d] dark:text-[#e6eaff]"
                           }`}
                         >
                           {m.content}
@@ -1285,16 +1882,169 @@ export default function App() {
                   ))}
                 </div>
               )}
+
+              {activeTab === "bookmarks" && (
+                <div className="flex flex-col h-full space-y-4">
+                  <button
+                    onClick={() => setShowBookmarkModal(true)}
+                    className="w-full py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg active:scale-95"
+                  >
+                    + Add Bookmark
+                  </button>
+
+                  {showBookmarkModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-end z-[150]">
+                      <div className="w-full bg-white dark:bg-zinc-900 rounded-t-3xl p-6 space-y-4">
+                        <h3 className="text-sm font-black">
+                          Add Bookmark on Page {currentPage + 1}
+                        </h3>
+                        <textarea
+                          value={bookmarkNote}
+                          onChange={(e) => setBookmarkNote(e.target.value)}
+                          placeholder="Optional note..."
+                          className="w-full p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm resize-none"
+                          rows="3"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setShowBookmarkModal(false)}
+                            className="flex-1 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-xl text-xs font-black"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={createBookmark}
+                            className="flex-1 py-2 bg-amber-500 text-white rounded-xl text-xs font-black"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex-1 overflow-y-auto space-y-2">
+                    {bookmarks.length === 0 ? (
+                      <div className="py-20 text-center opacity-50">
+                        <Bookmark
+                          size={32}
+                          className="mx-auto mb-2 opacity-30"
+                        />
+                        <p className="text-[10px] font-black uppercase">
+                          No bookmarks yet
+                        </p>
+                      </div>
+                    ) : (
+                      bookmarks.map((b) => (
+                        <div
+                          key={b.id}
+                          className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-900"
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-black text-amber-600">
+                              Page {b.pageIndex + 1}
+                            </span>
+                            <button
+                              onClick={() => deleteBookmark(b.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {b.note && (
+                            <p className="text-[9px] text-zinc-600 dark:text-zinc-300">
+                              {b.note}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "highlights" && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex gap-2">
+                    {["yellow", "green", "pink", "blue"].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSelectedHighlightColor(color)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-black capitalize transition-all ${
+                          selectedHighlightColor === color
+                            ? highlightColorButtonStyles[color].active
+                            : highlightColorButtonStyles[color].inactive
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={createHighlight}
+                    className="w-full py-3 bg-amber-500 text-white rounded-2xl font-black text-xs uppercase shadow-lg active:scale-95"
+                  >
+                    Select & Highlight
+                  </button>
+
+                  <div className="flex-1 overflow-y-auto space-y-2">
+                    {highlights.length === 0 ? (
+                      <div className="py-20 text-center opacity-50">
+                        <Highlighter
+                          size={32}
+                          className="mx-auto mb-2 opacity-30"
+                        />
+                        <p className="text-[10px] font-black uppercase">
+                          No highlights yet
+                        </p>
+                      </div>
+                    ) : (
+                      highlights.map((h) => (
+                        <div
+                          key={h.id}
+                          className={`p-3 rounded-xl border-l-4 ${
+                            h.color === "yellow"
+                              ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400"
+                              : h.color === "green"
+                                ? "bg-green-50 dark:bg-green-900/20 border-green-400"
+                                : h.color === "pink"
+                                  ? "bg-pink-50 dark:bg-pink-900/20 border-pink-400"
+                                  : "bg-blue-50 dark:bg-blue-900/20 border-blue-400"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-black text-amber-600">
+                              Page {h.pageIndex + 1}
+                            </span>
+                            <button
+                              onClick={() => deleteHighlight(h.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <p className="text-[9px] italic text-zinc-600 dark:text-zinc-300 line-clamp-2">
+                            "{h.text}"
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </aside>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex justify-around items-center z-[110] px-2 shadow-[0_-8px_30px_rgba(0,0,0,0.1)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex justify-around items-center z-[110] px-2 shadow-[0_-8px_30px_rgba(0,0,0,0.1)] overflow-x-auto">
         <NavItem id="library" icon={Library} label="Library" />
         <NavItem id="insights" icon={Sparkles} label="Magic" />
         <NavItem id="chat" icon={MessageSquare} label="Chat" />
         <NavItem id="navigator" icon={Layers} label="Pages" />
+        <NavItem id="bookmarks" icon={Bookmark} label="Bookmarks" />
+        <NavItem id="highlights" icon={Highlighter} label="Highlights" />
         <button
           onClick={hardReset}
           className="flex flex-col items-center p-2 text-zinc-400"

@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/index" },
+    { "source": "/api/ocr", "destination": "/api/index" },
+    { "source": "/api/parse_pdf", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
