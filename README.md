@@ -101,4 +101,5 @@ python index.py
 3. Utilize the application locally directly as an Anonymous navigator, or establish a cohesive account through the beautiful **Sign Up** interface.
 4. Dive into the **Library** toggle, upload an intricate dense analytical PDF file, and engage the **Magic Insights**! 
 
+HOSTED AS https://novel-quest-lv1v.vercel.app/
 ---
